@@ -1,6 +1,6 @@
 from mysql.connector import connect
 from typing import Any
-
+from .utils import create_the_dictionary_structure
 
 class FetchSPFromDB:
     """Fetching the Superpopulation from Database class"""
