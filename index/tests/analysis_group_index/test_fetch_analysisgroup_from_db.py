@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 from typing import Any
 from index.analysis_group_index.fetch_ag_from_db import FetchAGFromDB
 
+# ───────────────────────── Fixtures ──────────────────────────
 
 @pytest.fixture
 def db_config() -> dict[str, Any]:
@@ -33,6 +34,7 @@ def fetcher(db_config: dict[str, Any]) -> FetchAGFromDB:
     
     return FetchAGFromDB(db_config)
 
+# ────────────────────────── Tests ────────────────────────────
 
 def test_fetch_information_from_db(mocker, fetcher: FetchAGFromDB):
     """Test for fetching information from DB

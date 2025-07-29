@@ -4,6 +4,7 @@ from index.data_collection_index.fetch_information_from_db import DCDetailsFetch
 from typing import Any
 from pytest_mock import MockerFixture
 
+# ───────────────────────── Fixtures ──────────────────────────
 
 @pytest.fixture
 def db_config()-> dict[str, Any]:
@@ -32,6 +33,8 @@ def fetcher(db_config: dict[str, Any]) -> DCDetailsFetcher:
         DCDetailsFetcher: DCDetailsFetcher class
     """    
     return DCDetailsFetcher(db_config)
+
+# ────────────────────────── Tests ────────────────────────────
 
 def test_fetch_datacollections(mocker: MockerFixture, fetcher: DCDetailsFetcher):
     """Test For DCDetailsFetcher - fetch_datacollections

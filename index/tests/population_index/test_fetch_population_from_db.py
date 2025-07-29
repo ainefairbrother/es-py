@@ -1,4 +1,3 @@
-# index/tests/population_index/test_fetch_population_from_db.py
 import pytest
 from unittest.mock import MagicMock
 from typing import Any
@@ -9,8 +8,8 @@ from index.population_index.fetch_information_from_db import (
 )
 from index.population_index.utils import create_the_dictionary_structure
 
-
 # ───────────────────────── Fixtures ──────────────────────────
+
 @pytest.fixture
 def db_config() -> dict[str, Any]:
     return {
@@ -30,7 +29,6 @@ def fetcher(db_config: dict[str, Any]) -> PopulationDetailsFetcher:
 @pytest.fixture
 def blank_doc() -> dict[str, Any]:
     return create_the_dictionary_structure()
-
 
 # ────────────────────────── Tests ────────────────────────────
 
