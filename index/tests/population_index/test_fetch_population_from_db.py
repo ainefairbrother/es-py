@@ -1,3 +1,11 @@
+"""
+Unit-tests for PopulationDetailsFetcher (population_index).
+
+All database access is mocked with MagicMock so the tests run without a
+live MySQL instance.  Helper _patch_mysql() injects canned cursor.rows
+into mysql.connector.connect().
+"""
+
 import pytest
 from unittest.mock import MagicMock
 from typing import Any
@@ -33,7 +41,12 @@ def blank_doc() -> dict[str, Any]:
 # ────────────────────────── Tests ────────────────────────────
 
 def _patch_mysql(mocker: MockerFixture, rows):
-    """Return a patched mysql.connector.connect that yields `rows`."""
+    """Patch mysql.connector.connect so cursor.fetchall() yields *rows*.
+
+    Args:
+        mocker (MockerFixture): The pytest-mocker fixture used to apply the patch.
+        rows (list | tuple): Data that cursor.fetchall() should return.
+    """
     mock_cursor = MagicMock()
     mock_cursor.fetchall.return_value = rows
     mock_db = MagicMock()
@@ -43,6 +56,13 @@ def _patch_mysql(mocker: MockerFixture, rows):
 
 
 def test_fetch_population(mocker: MockerFixture, fetcher: PopulationDetailsFetcher):
+    """Test fetch_population returns the expected row.
+
+    Args:
+        mocker (MockerFixture): pytest-mocker fixture for patching.
+        fetcher (PopulationDetailsFetcher): Instance under test.
+    """
+    
     rows = [
         (
             "code1", "name1", "desc",
@@ -57,9 +77,14 @@ def test_fetch_population(mocker: MockerFixture, fetcher: PopulationDetailsFetch
     assert result[0][0] == "code1"
 
 
-def test_fetch_data_collection_details(
-    mocker: MockerFixture, fetcher: PopulationDetailsFetcher
-):
+def test_fetch_data_collection_details(mocker: MockerFixture, fetcher: PopulationDetailsFetcher):
+    """Test fetch_data_collection_details groups rows by population ID.
+
+    Args:
+        mocker (MockerFixture): pytest-mocker fixture for patching.
+        fetcher (PopulationDetailsFetcher): Instance under test.
+    """
+    
     # method returns {pop_id: [tuple, ...]}
     rows = [(1, "type1", "group1", "title1", 123, "open")]
     _patch_mysql(mocker, rows)
@@ -71,14 +96,19 @@ def test_fetch_data_collection_details(
 
 
 def test_build_population_info(mocker: MockerFixture, fetcher: PopulationDetailsFetcher):
-    """End-to-end build with patched helper outputs."""
-    # --- fake primary row (length 13, pop_id = 123 at index 12) ---
+    """Test build_population_info assembles a full population document.
+
+    Args:
+        mocker (MockerFixture): pytest-mocker fixture for patching.
+        fetcher (PopulationDetailsFetcher): Instance under test.
+    """
+    
     row = (
         "code", "name", "desc", 1.1, 2.2, "eid",
         0, 10, "spcode", "spname", "#000", 3, 123
     )
 
-    # --- stub helpers the method relies on ---
+    # stub helpers the method relies on
     dc_map = {
         123: [("seq", "grp", "Human Genome", 999, "reuse")]
     }
@@ -101,16 +131,20 @@ def test_build_population_info(mocker: MockerFixture, fetcher: PopulationDetails
 
     pop_doc = fetcher.build_population_info(row, dc_map, overlap_map)
 
-    # --- minimal sanity checks ---
     assert pop_doc["code"] == "code"
     assert pop_doc["samples"]["count"] == 10
     assert "seq" in pop_doc["dataCollections"]["dataTypes"]
     assert pop_doc["overlappingPopulations"]["sharedSampleCount"] == 1
 
 
-def test_fetch_overlap_population_details(
-    mocker: MockerFixture, fetcher: PopulationDetailsFetcher
-):
+def test_fetch_overlap_population_details(mocker: MockerFixture, fetcher: PopulationDetailsFetcher):
+    """Test fetch_overlap_population_details returns overlaps keyed by ID.
+
+    Args:
+        mocker (MockerFixture): pytest-mocker fixture for patching.
+        fetcher (PopulationDetailsFetcher): Instance under test.
+    """
+    
     rows = [
         (
             1,
