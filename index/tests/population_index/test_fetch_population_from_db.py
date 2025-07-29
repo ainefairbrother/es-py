@@ -33,13 +33,14 @@ def blank_doc() -> dict[str, Any]:
 
 
 # ────────────────────────── Tests ────────────────────────────
+
 def _patch_mysql(mocker: MockerFixture, rows):
     """Return a patched mysql.connector.connect that yields `rows`."""
     mock_cursor = MagicMock()
     mock_cursor.fetchall.return_value = rows
     mock_db = MagicMock()
     mock_db.cursor.return_value = mock_cursor
-    mock_db.__enter__.return_value = mock_db  # for `with ... as db`
+    mock_db.__enter__.return_value = mock_db
     return mocker.patch("mysql.connector.connect", return_value=mock_db)
 
 
