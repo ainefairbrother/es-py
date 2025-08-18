@@ -20,8 +20,9 @@ def create_the_dictionary_structure() -> dict[str, Any]:
 
         # these may stay empty
         "dataCollections": [],
-        "overlappingPopulations": {
-            "sharedSampleCount": 0,
-            "sharedSamples": []
-        },
+        "overlappingPopulations": []
+        # "overlappingPopulations": {
+        #     "sharedSampleCount": 0,
+        #     "sharedSamples": []
+        # },
     }
