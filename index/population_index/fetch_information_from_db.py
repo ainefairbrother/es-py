@@ -188,13 +188,7 @@ class PopulationDetailsFetcher:
                 "display_color": row[10],
                 "display_order": row[11],
             },
-            # "dataCollections": {
-            #     "dataTypes": [],
-            # },
             "dataCollections": [],
-            # "overlappingPopulations": {
-            #     "sharedSamples": [],
-            # },
             "overlappingPopulations": []
         }
         
@@ -229,8 +223,7 @@ class PopulationDetailsFetcher:
             dtypes = [k for k in ("sequence", "alignment", "variants") if k in entry]
             if dtypes:
                 entry["dataTypes"] = dtypes
-            if b.get("dataReusePolicy"):
-                entry["dataReusePolicy"] = b["dataReusePolicy"]
+            entry["dataReusePolicy"] = b.get("dataReusePolicy")
             population_info["dataCollections"].append(entry)
 
         # ---------- overlappingPopulations ----------
