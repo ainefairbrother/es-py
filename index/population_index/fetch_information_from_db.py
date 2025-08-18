@@ -217,7 +217,6 @@ class PopulationDetailsFetcher:
             if ag_desc and dtype in ("sequence", "alignment", "variants"):
                 agg[dtype].add(ag_desc)
 
-        # ---------- dataCollections ----------
         # tuples: (dt.code, ag.description, dc.title, dc_id, dc.reuse_policy)
         for dc_id in sorted(per_dc, key=lambda k: (per_dc[k]["title"] or "", k)):
             b = per_dc[dc_id]
