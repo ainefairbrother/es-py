@@ -95,9 +95,11 @@ class FileIndexer:
         dc_data, sp_data = self.fetcher.preload_data(file_id_info)
         
         for row in files_info:
-            code = row[0]
-            files_data = self.fetcher.populate_the_dictionary(row, dc_data, sp_data )
-            yield self.indexer.index_data(files_data, code, self.type_of)
+            file_id = int(row[0])
+            # match legacy ES v1.5 IDs - 9 digits, left padded like 000000057
+            padded_id = f"{file_id:09d}"
+            files_data = self.fetcher.populate_the_dictionary(row, dc_data, sp_data)
+            yield self.indexer.index_data(files_data, padded_id, self.type_of)
 
     def build_and_index_file_info(self):
         """Bulk index for the file
