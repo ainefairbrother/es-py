@@ -154,7 +154,7 @@ class DCDetailsFetcher:
             FROM file f LEFT JOIN data_type dt ON f.data_type_id = dt.data_type_id
             LEFT JOIN analysis_group ag ON f.analysis_group_id = ag.analysis_group_id
             INNER JOIN file_data_collection fdc ON f.file_id=fdc.file_id
-            WHERE fdc.data_collection_id= %s
+            WHERE fdc.data_collection_id= %s AND dt.code IS NOT NULL
             GROUP BY dt.data_type_id, ag.analysis_group_id """
 
         db = connect(
@@ -188,6 +188,7 @@ class DCDetailsFetcher:
                 "code": row[1],
                 "title": row[2],
                 "shortTitle": row[3],
+                "displayOrder": row[4],
                 "dataReusePolicy": row[5],
                 "website": row[7],
                 "samples": {"count": self.fetch_samples_count(row[0])},
@@ -201,17 +202,17 @@ class DCDetailsFetcher:
                 {"displayOrder": pub[2], "name": pub[3], "url": pub[1]}
             )
 
-        analysis_info = self.fetch_analysis_information(row[0])
-        for category, data in analysis_info:
-            if category not in dc_data:
-                dc_data[category] = []
-            if data not in dc_data[category]:
-                dc_data[category].append(data)
+        for dtype, ag_desc in self.fetch_analysis_information(row[0]):
+            if not dtype: # skip empty/None dtype
+                continue
+            if ag_desc is None: # skip empty analysis_group names
+                continue
+            dc_data.setdefault(dtype, [])
+            if ag_desc not in dc_data[dtype]:
+                dc_data[dtype].append(ag_desc)
 
-            if "dataTypes" not in dc_data:
-                dc_data["dataTypes"] = []
-
-            if category not in dc_data["dataTypes"]:
-                dc_data["dataTypes"].append(category)
+            dc_data.setdefault("dataTypes", [])
+            if dtype not in dc_data["dataTypes"]:
+                dc_data["dataTypes"].append(dtype)
 
         return dc_data
