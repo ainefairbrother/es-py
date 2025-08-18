@@ -85,7 +85,7 @@ class PopulationDetailsFetcher:
             JOIN data_type dt ON f.data_type_id = dt.data_type_id
             JOIN file_data_collection fdc ON f.file_id = fdc.file_id
             JOIN data_collection dc ON fdc.data_collection_id = dc.data_collection_id
-            WHERE p.population_id IN ({placeholders})
+            WHERE p.population_id IN ({placeholders}) AND fdc.data_collection_id = dspa.data_collection_id
             GROUP BY dt.data_type_id, ag.analysis_group_id, dc.data_collection_id, p.population_id
         """
 
