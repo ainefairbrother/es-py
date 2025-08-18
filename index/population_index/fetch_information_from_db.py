@@ -188,51 +188,75 @@ class PopulationDetailsFetcher:
                 "display_color": row[10],
                 "display_order": row[11],
             },
-            "dataCollections": {
-                "dataTypes": [],
-            },
-            "overlappingPopulations": {
-                "sharedSamples": [],
-            },
+            # "dataCollections": {
+            #     "dataTypes": [],
+            # },
+            "dataCollections": [],
+            # "overlappingPopulations": {
+            #     "sharedSamples": [],
+            # },
+            "overlappingPopulations": []
         }
+        
+        # ---------- dataCollections ----------
+        # tuples: (dt.code, ag.description, dc.title, dc_id, dc.reuse_policy)
+        dc_rows = data_collection_map.get(pop_id, [])
 
-        for dc in data_collection_map.get(pop_id, []):
-            data_type, description, title, dc_id, reuse_policy = dc
+        per_dc = {}  # dc_id -> aggregator
+        for dtype, ag_desc, dc_title, dc_id, reuse_policy in dc_rows:
+            if not dc_id or not dc_title or not dtype:
+                # skip incomplete rows and NULL dtype (prevents "null" key)
+                continue
+            agg = per_dc.setdefault(dc_id, {
+                "title": dc_title,
+                "dataReusePolicy": reuse_policy,
+                "sequence": set(),
+                "alignment": set(),
+                "variants": set(),
+            })
+            if ag_desc and dtype in ("sequence", "alignment", "variants"):
+                agg[dtype].add(ag_desc)
 
-            if data_type not in population_info["dataCollections"]:
-                population_info["dataCollections"][data_type] = []
+        # ---------- dataCollections ----------
+        # tuples: (dt.code, ag.description, dc.title, dc_id, dc.reuse_policy)
+        for dc_id in sorted(per_dc, key=lambda k: (per_dc[k]["title"] or "", k)):
+            b = per_dc[dc_id]
+            entry = {"title": b["title"]}
+            # add dtype buckets if non-empty
+            for key in ("sequence", "alignment", "variants"):
+                if b[key]:
+                    entry[key] = sorted(b[key])
+            # dataTypes derived from present buckets
+            dtypes = [k for k in ("sequence", "alignment", "variants") if k in entry]
+            if dtypes:
+                entry["dataTypes"] = dtypes
+            if b.get("dataReusePolicy"):
+                entry["dataReusePolicy"] = b["dataReusePolicy"]
+            population_info["dataCollections"].append(entry)
 
-            if description not in population_info["dataCollections"][data_type]:
-                population_info["dataCollections"][data_type].append(description)
+        # ---------- overlappingPopulations ----------
+        # rows: (source_population_id, overlap.elastic_id, overlap.description, shared_sample_name)
+        ov_rows = overlap_map.get(pop_id, [])
+        by_overlap = {}
+        for _src, ov_elastic_id, ov_desc, sample_name in ov_rows:
+            if not ov_elastic_id:
+                continue
+            agg = by_overlap.setdefault(ov_elastic_id, {
+                "populationElasticId": ov_elastic_id,
+                "populationDescription": ov_desc,
+                "sharedSamples": set(),
+            })
+            if sample_name:
+                agg["sharedSamples"].add(sample_name)
 
-            if data_type not in population_info["dataCollections"]["dataTypes"]:
-                population_info["dataCollections"]["dataTypes"].append(data_type)
-
-            if not population_info["dataCollections"].get("dataReusePolicy"):
-                population_info["dataCollections"]["dataReusePolicy"] = reuse_policy
-
-            if not population_info["dataCollections"].get("title"):
-                population_info["dataCollections"]["title"] = title
-
-        overlaps = overlap_map.get(pop_id, [])
-        if overlaps:
-            population_info["overlappingPopulations"]["populationElasticId"] = overlaps[
-                0
-            ][1]
-            population_info["overlappingPopulations"]["populationDescription"] = (
-                overlaps[0][2]
-            )
-            for row in overlaps:
-                if (
-                    row[3]
-                    not in population_info["overlappingPopulations"]["sharedSamples"]
-                ):
-                    population_info["overlappingPopulations"]["sharedSamples"].append(
-                        row[3]
-                    )
-
-            population_info["overlappingPopulations"]["sharedSampleCount"] = len(
-                population_info["overlappingPopulations"]["sharedSamples"]
-            )
+        for k in sorted(by_overlap, key=lambda kk: (by_overlap[kk]["populationDescription"] or "", kk)):
+            b = by_overlap[k]
+            samples = sorted(b["sharedSamples"])
+            population_info["overlappingPopulations"].append({
+                "populationElasticId": b["populationElasticId"],
+                "populationDescription": b["populationDescription"],
+                "sharedSamples": samples,
+                "sharedSampleCount": len(samples),
+            })
 
         return population_info
