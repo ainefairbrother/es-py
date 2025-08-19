@@ -125,13 +125,14 @@ class FileIndexer:
         # update
         else:
             rows = self.fetcher.fetch_files_for_update()
-            actions = self.generate_actions(rows)
-            self.indexer.bulk_index(actions)
+            index_actions = self.generate_actions(rows)
 
-            ## when delete support is added to ElasticSearchIndexer, the following lines can be uncommented
-            ## this will delete files that are not in the current tree or foreign files but are indexed in ES
-            # ids_to_delete = self.fetcher.fetch_files_to_delete_from_index()
-            # del_actions = (self.indexer.delete_data(f"{int(fid):09d}") for fid in ids_to_delete)
+            ## this will delete files from the index that are not in the current tree or foreign files but are indexed in ES
+            # ids_to_delete_rows = self.fetcher.fetch_files_to_delete_from_index()
+            # ids_to_delete = [int(t[0]) for t in ids_to_delete_rows]
+            # del_actions = (self.indexer.delete_data(f"{fid:09d}") for fid in ids_to_delete)
+            
+            self.indexer.bulk_index(index_actions)
             # self.indexer.bulk_index(del_actions)
 
             ## to mirror Perl ES indexer functionality and turn on update_elasticsearch_file 
