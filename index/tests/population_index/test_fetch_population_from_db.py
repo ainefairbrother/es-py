@@ -103,39 +103,34 @@ def test_build_population_info(mocker: MockerFixture, fetcher: PopulationDetails
         fetcher (PopulationDetailsFetcher): Instance under test.
     """
     
+def test_build_population_info(mocker: MockerFixture, fetcher: PopulationDetailsFetcher):
     row = (
         "code", "name", "desc", 1.1, 2.2, "eid",
         0, 10, "spcode", "spname", "#000", 3, 123
     )
 
-    # stub helpers the method relies on
+    # Use a real dtype key that the code aggregates
     dc_map = {
-        123: [("seq", "grp", "Human Genome", 999, "reuse")]
+        123: [("sequence", "grp", "Human Genome", 999, "reuse")]
     }
     overlap_map = {
-        123: [
-            (
-                123,              # source_population_id
-                "popEL",          # populationElasticId
-                "Overlap desc",   # populationDescription
-                "sharedSample1",  # sharedSampleName
-            )
-        ]
+        123: [(123, "popEL", "Overlap desc", "sharedSample1")]
     }
-    mocker.patch.object(
-        fetcher, "fetch_data_collection_details", return_value=dc_map
-    )
-    mocker.patch.object(
-        fetcher, "fetch_overlap_population_details", return_value=overlap_map
-    )
+    mocker.patch.object(fetcher, "fetch_data_collection_details", return_value=dc_map)
+    mocker.patch.object(fetcher, "fetch_overlap_population_details", return_value=overlap_map)
 
     pop_doc = fetcher.build_population_info(row, dc_map, overlap_map)
 
     assert pop_doc["code"] == "code"
     assert pop_doc["samples"]["count"] == 10
-    assert "seq" in pop_doc["dataCollections"]["dataTypes"]
-    assert pop_doc["overlappingPopulations"]["sharedSampleCount"] == 1
 
+    # dataCollections is now a list; find the "Human Genome" entry
+    dc = next(d for d in pop_doc["dataCollections"] if d["title"] == "Human Genome")
+    assert "sequence" in dc["dataTypes"]
+    assert "grp" in dc["sequence"]
+
+    # overlappingPopulations is now a list, each with its own sharedSampleCount
+    assert pop_doc["overlappingPopulations"][0]["sharedSampleCount"] == 1
 
 def test_fetch_overlap_population_details(mocker: MockerFixture, fetcher: PopulationDetailsFetcher):
     """Test fetch_overlap_population_details returns overlaps keyed by ID.
