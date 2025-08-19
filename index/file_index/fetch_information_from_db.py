@@ -180,7 +180,10 @@ class FetchFileFromDB:
         for s_pop in sp_map.get(file_id, []):
             file_dict["samples"].append(s_pop[0])
             file_dict["populations"].append(s_pop[1])
-
+        
+        # get unique populations
+        file_dict["populations"] = list(set(file_dict["populations"]))
+        
         file_dict.update({
             "dataType": row[3],
             "analysisGroup": row[4],
