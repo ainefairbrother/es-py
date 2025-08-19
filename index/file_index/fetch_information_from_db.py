@@ -7,17 +7,17 @@ class FetchFileFromDB:
     def __init__(self, db_config: dict):
         self.db_config = db_config
 
-    def fetch_file_from_db(self) -> list[tuple]:
-        """Fetches file from DB
+    # Fetch files for full indexing
+    def fetch_files_for_create(self) -> list[tuple]:
 
-        Returns:
-            list[tuple]: A list of rows from the db
+        fetch_files_sql = """
+        SELECT f.file_id, f.url, f.md5, dt.code, ag.description
+        FROM file f 
+        LEFT JOIN data_type dt ON f.data_type_id = dt.data_type_id
+        LEFT JOIN analysis_group ag ON f.analysis_group_id = ag.analysis_group_id
+        WHERE (f.foreign_file IS TRUE OR f.in_current_tree IS TRUE)
+        ORDER BY file_id
         """
-
-        fetch_files_sql = """SELECT f.file_id, f.url, f.md5, dt.code, ag.description
-    FROM file f LEFT JOIN data_type dt ON f.data_type_id = dt.data_type_id
-    LEFT JOIN analysis_group ag ON f.analysis_group_id = ag.analysis_group_id
-    ORDER BY file_id"""
 
         db = mysql.connector.connect(
             host=self.db_config["host"],
@@ -34,6 +34,61 @@ class FetchFileFromDB:
         db.close()
 
         return files
+    
+    # Fetch files for update of indexing
+    def fetch_files_for_update(self) -> list[tuple]:
+
+        fetch_files_sql = """
+        SELECT f.file_id, f.url, f.md5, dt.code, ag.description
+        FROM file f 
+        LEFT JOIN data_type dt ON f.data_type_id = dt.data_type_id
+        LEFT JOIN analysis_group ag ON f.analysis_group_id = ag.analysis_group_id
+        WHERE (f.foreign_file IS TRUE OR f.in_current_tree IS TRUE)
+            AND (f.indexed_in_elasticsearch IS NOT TRUE)
+        ORDER BY file_id
+        """
+
+        db = mysql.connector.connect(
+            host=self.db_config["host"],
+            port=self.db_config["port"],
+            user=self.db_config["user"],
+            database=self.db_config["database"],
+            password=self.db_config["password"],
+        )
+
+        cursor = db.cursor()
+        cursor.execute(fetch_files_sql)
+        files = cursor.fetchall()
+        cursor.close()
+        db.close()
+
+        return files
+    
+    # Fetch files that are no longer foreign_file TRUE & in_current_tree TRUE but are still in index
+    # These files need to be deleted from the index
+    def fetch_files_to_delete_from_index(self) -> list[int]:
+        fetch_files_sql = """SELECT f.file_id
+                 FROM file f
+                 WHERE (f.foreign_file IS NOT TRUE AND f.in_current_tree IS NOT TRUE)
+                   AND (f.indexed_in_elasticsearch IS TRUE)
+                 ORDER BY f.file_id"""
+        
+        db = mysql.connector.connect(
+            host=self.db_config["host"],
+            port=self.db_config["port"],
+            user=self.db_config["user"],
+            database=self.db_config["database"],
+            password=self.db_config["password"],
+        )
+
+        cursor = db.cursor()
+        cursor.execute(fetch_files_sql)
+        files = [f[0] for f in cursor.fetchall()]
+        cursor.close()
+        db.close()
+
+        return files
+
 
     def fetch_file_id_from_db(self)-> list:
         """_summary_
@@ -58,6 +113,7 @@ class FetchFileFromDB:
         db.close()
 
         return file_ids
+
 
     def fetch_old_files_from_db(self) -> list[tuple]:
         """Fetches old file from the DB
@@ -94,7 +150,9 @@ class FetchFileFromDB:
             list[tuple]: A list of rows from the db
         """
 
-        update_elasticsearch_sql = """UPDATE file SET indexed_in_elasticsearch = (foreign_file IS TRUE OR in_current_tree IS TRUE)"""
+        update_elasticsearch_sql = """
+        UPDATE file SET indexed_in_elasticsearch = (foreign_file IS TRUE OR in_current_tree IS TRUE)
+        """
 
         db = mysql.connector.connect(
             host=self.db_config["host"],
@@ -109,7 +167,7 @@ class FetchFileFromDB:
         db.commit()
         cursor.close()
         db.close()
-    
+
 
     def preload_data(self, file_ids: list[int]) -> tuple[defaultdict, defaultdict] :
         """Preload data to reduce the number of queries on the database
@@ -122,11 +180,13 @@ class FetchFileFromDB:
         """              
         format_strings = ",".join(['%s'] * len(file_ids))
 
-        fetch_datacollections_sql = f"""SELECT fdc.file_id, dc.title, dc.reuse_policy from data_collection dc, file_data_collection fdc
-                                        WHERE fdc.data_collection_id=dc.data_collection_id AND fdc.file_id IN ({format_strings})
-                                        ORDER BY dc.reuse_policy_precedence"""
+        fetch_datacollections_sql = f"""
+        SELECT fdc.file_id, dc.title, dc.reuse_policy from data_collection dc, file_data_collection fdc
+        WHERE fdc.data_collection_id=dc.data_collection_id 
+        AND fdc.file_id IN ({format_strings})
+        ORDER BY dc.reuse_policy_precedence
+        """
         
-
         db = mysql.connector.connect(
             host=self.db_config["host"],
             port=self.db_config["port"],
@@ -140,20 +200,23 @@ class FetchFileFromDB:
         dc_map = defaultdict(list)
         for file_id, collection, resuse_policy in cursor.fetchall():
             dc_map[file_id].append((collection, resuse_policy))
-        
 
-        fetch_sample_sql =  f"""SELECT  distinct file_data_collection.file_id, sample.name, population.description AS pop_description 
-                            from file_data_collection, sample_file, sample, dc_sample_pop_assign, 
-                            population where file_data_collection.file_id IN ({format_strings}) and sample_file.file_id = file_data_collection.file_id  
-                            and sample_file.sample_id = sample.sample_id and sample.sample_id=dc_sample_pop_assign.sample_id and 
-                            file_data_collection.data_collection_id = dc_sample_pop_assign.data_collection_id and dc_sample_pop_assign.population_id =population.population_id"""
+        fetch_sample_sql =  f"""
+        SELECT  distinct file_data_collection.file_id, sample.name, population.description AS pop_description 
+        FROM file_data_collection, sample_file, sample, dc_sample_pop_assign, population
+        WHERE file_data_collection.file_id IN ({format_strings}) 
+        AND sample_file.file_id = file_data_collection.file_id  
+        AND sample_file.sample_id = sample.sample_id 
+        AND sample.sample_id=dc_sample_pop_assign.sample_id 
+        AND file_data_collection.data_collection_id = dc_sample_pop_assign.data_collection_id 
+        AND dc_sample_pop_assign.population_id =population.population_id
+        """
 
         cursor.execute(fetch_sample_sql, file_ids)
         sp_map = defaultdict(list)
         for file_id, sample, population in cursor.fetchall():
             sp_map[file_id].append((sample, population))
 
-        
         cursor.close()
         db.close()
         return dc_map, sp_map
