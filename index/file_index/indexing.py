@@ -117,7 +117,7 @@ class FileIndexer:
             if self.create_file_index() is True:
                 self.indexer.bulk_index(actions)
                 
-                ## to mirror Perl functionality and turn on update_elasticsearch_file 
+                ## to mirror Perl ES indexer functionality and turn on update_elasticsearch_file 
                 ## this flips the flag indexed_in_elasticsearch = 1/0
                 ## can turn this on in production
                 # self.fetcher.update_elasticsearch_file()
@@ -134,7 +134,7 @@ class FileIndexer:
             # del_actions = (self.indexer.delete_data(f"{int(fid):09d}") for fid in ids_to_delete)
             # self.indexer.bulk_index(del_actions)
 
-            ## to mirror Perl functionality and turn on update_elasticsearch_file 
+            ## to mirror Perl ES indexer functionality and turn on update_elasticsearch_file 
             ## this flips the flag indexed_in_elasticsearch = 1/0
             ## can turn this on in production
             # self.fetcher.update_elasticsearch_file()

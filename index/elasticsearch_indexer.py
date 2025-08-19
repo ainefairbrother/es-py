@@ -2,7 +2,7 @@ import elasticsearch
 import click
 from elasticsearch import Elasticsearch, exceptions
 from elasticsearch.helpers import bulk, BulkIndexError
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Iterable
 
 
 class ElasticSearchIndexer:
@@ -92,3 +92,10 @@ class ElasticSearchIndexer:
             click.echo("Bulk indexing failed")
             for error in e.errors:
                 click.echo(error)
+
+    def delete_data(self, doc_id: str) -> Dict[str, Any]:
+        return {
+            "_op_type": "delete",
+            "_index": self.index_name,
+            "_id": doc_id,
+        }
