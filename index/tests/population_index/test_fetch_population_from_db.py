@@ -109,7 +109,6 @@ def test_build_population_info(mocker: MockerFixture, fetcher: PopulationDetails
         0, 10, "spcode", "spname", "#000", 3, 123
     )
 
-    # Use a real dtype key that the code aggregates
     dc_map = {
         123: [("sequence", "grp", "Human Genome", 999, "reuse")]
     }
@@ -124,12 +123,12 @@ def test_build_population_info(mocker: MockerFixture, fetcher: PopulationDetails
     assert pop_doc["code"] == "code"
     assert pop_doc["samples"]["count"] == 10
 
-    # dataCollections is now a list; find the "Human Genome" entry
+    # dataCollections is a list
     dc = next(d for d in pop_doc["dataCollections"] if d["title"] == "Human Genome")
     assert "sequence" in dc["dataTypes"]
     assert "grp" in dc["sequence"]
 
-    # overlappingPopulations is now a list, each with its own sharedSampleCount
+    # overlappingPopulations is a list, each with its own sharedSampleCount
     assert pop_doc["overlappingPopulations"][0]["sharedSampleCount"] == 1
 
 def test_fetch_overlap_population_details(mocker: MockerFixture, fetcher: PopulationDetailsFetcher):
