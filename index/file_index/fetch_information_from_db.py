@@ -90,59 +90,6 @@ class FetchFileFromDB:
         return files
 
 
-    def fetch_file_id_from_db(self)-> list:
-        """_summary_
-
-        Returns:
-            list: _description_
-        """        
-        fetch_file_id_sql = """SELECT file_id FROM file"""
-
-        db = mysql.connector.connect(
-            host=self.db_config["host"],
-            port=self.db_config["port"],
-            user=self.db_config["user"],
-            database=self.db_config["database"],
-            password=self.db_config["password"],
-        )
-
-        cursor = db.cursor()
-        cursor.execute(fetch_file_id_sql)
-        file_ids = [row[0] for row in cursor.fetchall()] 
-        cursor.close()
-        db.close()
-
-        return file_ids
-
-
-    def fetch_old_files_from_db(self) -> list[tuple]:
-        """Fetches old file from the DB
-
-        Returns:
-            list[tuple]: A list of rows from the db
-        """
-
-        fetch_old_files_sql = """SELECT f.file_id FROM file f
-                        WHERE f.foreign_file IS NOT TRUE AND f.in_current_tree IS NOT TRUE AND f.indexed_in_elasticsearch IS TRUE
-                        ORDER BY file_id"""
-
-        db = mysql.connector.connect(
-            host=self.db_config["host"],
-            port=self.db_config["port"],
-            user=self.db_config["user"],
-            database=self.db_config["database"],
-            password=self.db_config["password"],
-        )
-
-        cursor = db.cursor()
-        cursor.execute(fetch_old_files_sql)
-        old_files = cursor.fetchall()
-        cursor.close()
-        db.close()
-
-        return old_files
-
-
     def update_elasticsearch_file(self) -> list[tuple]:
         """Update the column set indexed_in_elasticsearch = 1 based on if foreign file/ in_current_tree is true
 
