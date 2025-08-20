@@ -8,6 +8,8 @@ This repository contains indexers - one per index type. These do the following:
 2. Aggregate rows into the document shape expected by the API
 3. Bulk indexes documents into Elasticsearch using either create or update
 
+---
+
 ### Requirements
 
 - Python 3.12+
