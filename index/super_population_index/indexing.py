@@ -63,10 +63,10 @@ class SuperPopulationIndexer:
         if self.type_of == "create":
             if self.create_superpopulation_index() is True:
                 self.indexer.bulk_index(actions)
-                click.echo("Index built successfully")
+                click.echo("Bulk indexing successful")
         else:
             self.indexer.bulk_index(actions)
-            click.echo("Index built successfully")
+            click.echo("Bulk indexing successful")
 
 
 @click.command()

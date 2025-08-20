@@ -69,11 +69,11 @@ class PopulationIndexer:
             if self.create_population_index() is True:
                 self.indexer.bulk_index(actions)
                 click.echo(
-                    f"{self.indexer.index_name} has been populated with documents"
+                    f"Bulk indexing successful"
                 )
         else:
             self.indexer.bulk_index(actions)
-            click.echo(f"{self.indexer.index_name} has been populated with documents")
+            click.echo(f"Bulk indexing successful")
 
 
 @click.command()
