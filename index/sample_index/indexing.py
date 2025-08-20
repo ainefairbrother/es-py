@@ -84,16 +84,27 @@ class SampleIndexer:
         return sample
 
     def generate_actions(self):
-        """Generate actions that will be used for bulk index
-
-        Yields:
-            _type_: A generator
-        """
+        """Generate actions that will be used for bulk index (with batched preloads)."""
         samples_info = self.fetcher.fetch_samples()
+        sample_ids = [int(r[0]) for r in samples_info]  # sample_id
+
+        # preload all dependent data once to avoid N+1 queries
+        sources_map = self.fetcher.preload_sources(sample_ids)
+        pops_map    = self.fetcher.preload_populations(sample_ids)
+        dcs_map     = self.fetcher.preload_datacollections(sample_ids)
+        rels_map    = self.fetcher.preload_relationships(sample_ids)
+        syns_map    = self.fetcher.preload_synonyms(sample_ids)
 
         for row in samples_info:
             code = row[1]
-            samples_data = self.fetcher.build_the_dictionary_structure(row)
+            samples_data = self.fetcher.build_the_dictionary_structure(
+                row,
+                sources_map=sources_map,
+                populations_map=pops_map,
+                dcs_map=dcs_map,
+                rels_map=rels_map,
+                syns_map=syns_map,
+            )
             yield self.indexer.index_data(samples_data, code, self.type_of)
 
     def build_and_index_sample_info(self):
@@ -103,13 +114,20 @@ class SampleIndexer:
             _type_: Bulk actions
         """
         actions = self.generate_actions()
-        if self.type_of == "create":
-            if self.create_sample_index() is True:
+        try:
+            if self.type_of == "create":
+                if self.create_sample_index() is True:
+                    self.indexer.bulk_index(actions)
+                    click.echo("Bulk indexing successful")
+            else:
                 self.indexer.bulk_index(actions)
                 click.echo("Bulk indexing successful")
-        else:
-            self.indexer.bulk_index(actions)
-            click.echo("Bulk indexing successful")
+        finally:
+            # Ensure DB connection is closed even if bulk indexing raises
+            try:
+                self.fetcher.close()
+            except Exception:
+                pass
 
 
 @click.command()

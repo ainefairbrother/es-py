@@ -1,313 +1,303 @@
 from mysql.connector import connect
-from typing import Any
+from typing import Any, Iterable
 from index.sample_index.utils import create_the_dictionary_structure
 
 
 class SampleDetailsFetcher:
     def __init__(self, db_config: dict):
-        """Initialization of the SampleDetailsFetcher class
-
-        Args:
-            db_config (dict): A dictionary containing the configuration data
-        """
-
         self.db_config = db_config
-        self.samples_dict = create_the_dictionary_structure()
+        self._conn = None  # single reused connection
 
+    # ───────────────────────── DB connection helpers ─────────────────────────
+    def _get_conn(self):
+        if self._conn is None:
+            self._conn = connect(
+                host=self.db_config["host"],
+                port=self.db_config["port"],
+                database=self.db_config["database"],
+                user=self.db_config["user"],
+                password=self.db_config["password"],
+            )
+        else:
+            try:
+                if not self._conn.is_connected():
+                    self._conn.reconnect(attempts=2, delay=0.2)
+            except Exception:
+                try:
+                    self._conn.close()
+                finally:
+                    self._conn = connect(
+                        host=self.db_config["host"],
+                        port=self.db_config["port"],
+                        database=self.db_config["database"],
+                        user=self.db_config["user"],
+                        password=self.db_config["password"],
+                    )
+        return self._conn
+
+    def close(self):
+        if self._conn is not None:
+            try:
+                self._conn.close()
+            finally:
+                self._conn = None
+
+    # ───────────────────────────── queries ─────────────────────────────
     def fetch_samples(self) -> list[tuple]:
-        """Fetch samples from the database
+        sql = "SELECT s.sample_id, s.name, s.biosample_id, s.sex FROM sample s"
+        db = self._get_conn()
+        cur = db.cursor()
+        cur.execute(sql)
+        rows = cur.fetchall()
+        cur.close()
+        return rows
 
-        Returns:
-            list[tuple]: List of tuples info from the DB
+    # ─────────────── batch preloads (eliminate N+1) ───────────────
+    @staticmethod
+    def _chunks(ids: list[int], size: int = 1000) -> Iterable[list[int]]:
+        for i in range(0, len(ids), size):
+            yield ids[i : i + size]
+
+    def preload_sources(self, sample_ids: list[int]) -> dict[int, list[tuple]]:
         """
-
-        select_samples_sql = (
-            """SELECT s.sample_id, s.name, s.biosample_id, s.sex from sample s"""
-        )
-
-        db = connect(
-            host=self.db_config["host"],
-            port=self.db_config["port"],
-            database=self.db_config["database"],
-            user=self.db_config["user"],
-            password=self.db_config["password"],
-        )
-
-        cursor = db.cursor()
-        cursor.execute(select_samples_sql)
-        samples = cursor.fetchall()
-        cursor.close()
-        db.close()
-
-        return samples
-
-    def fetch_source_samples(self, sample_id: int) -> list[tuple]:
-        """Fetches source sample from the database
-
-        Args:
-            sample_id (id): sample id from the database used to fetch the info from the sample
-
-        Returns:
-            list[tuple]: Rows of information from the DB
+        Map: sample_id -> [(sample_source_id, name, description, url), ...]
         """
+        if not sample_ids:
+            return {}
+        out: dict[int, list[tuple]] = {}
+        db = self._get_conn()
+        for batch in self._chunks(sample_ids):
+            placeholders = ",".join(["%s"] * len(batch))
+            sql = f"""
+                SELECT s.sample_id, ss.sample_source_id, ss.name, ss.description, ss.url
+                FROM sample s
+                JOIN sample_source ss ON s.sample_source_id = ss.sample_source_id
+                WHERE s.sample_id IN ({placeholders})
+            """
+            cur = db.cursor()
+            cur.execute(sql, batch)
+            for sid, src_id, name, desc, url in cur.fetchall():
+                out.setdefault(sid, []).append((src_id, name, desc, url))
+            cur.close()
+        return out
 
-        select_source_sample_sql = """SELECT s_source.sample_source_id, s_source.name, s_source.description, s_source.url from sample s, 
-                                        sample_source s_source where s.sample_source_id=s_source.sample_source_id and s.sample_id = %s"""
-
-        db = connect(
-            host=self.db_config["host"],
-            port=self.db_config["port"],
-            database=self.db_config["database"],
-            user=self.db_config["user"],
-            password=self.db_config["password"],
-        )
-
-        cursor = db.cursor()
-        cursor.execute(select_source_sample_sql, (sample_id,))
-        source = cursor.fetchall()
-        cursor.close()
-        db.close()
-
-        return source
-
-    def fetch_population_samples(self, sample_id: int) -> list[tuple]:
-        """Fetch population info for the samples from the DB
-
-        Args:
-            sample_id (int): sample id from the database used to fetch the info from the sample
-
-        Returns:
-            list[tuple]: Info from the DB
+    def preload_populations(self, sample_ids: list[int]) -> dict[int, list[tuple]]:
         """
-
-        select_population_sample_sql = """SELECT DISTINCT population.population_id, population.code, population.name, population.description, population.latitude, 
-                                            population.longitude, population.elastic_id, population.superpopulation_id, superpopulation.code, superpopulation.name, superpopulation.display_colour, 
-                                            superpopulation.display_order from dc_sample_pop_assign, population, superpopulation where dc_sample_pop_assign.sample_id = %s
-                                            and dc_sample_pop_assign.population_id =population.population_id and population.superpopulation_id =superpopulation.superpopulation_id"""
-
-        db = connect(
-            host=self.db_config["host"],
-            port=self.db_config["port"],
-            database=self.db_config["database"],
-            user=self.db_config["user"],
-            password=self.db_config["password"],
-        )
-
-        cursor = db.cursor()
-        cursor.execute(select_population_sample_sql, (sample_id,))
-        population = cursor.fetchall()
-        cursor.close()
-        db.close()
-
-        return population
-
-    def fetch_dataCollections_samples(self, sample_id: int) -> list[tuple]:
-        """Fetch dataCollections info for the samples from the DB
-
-        Args:
-            sample_id (int): sample id from the database used to fetch the info from the sample
-
-        Returns:
-            list[tuple]: Info from the DB
+        Map: sample_id -> rows matching fetch_population_samples() shape but with sample_id
         """
+        if not sample_ids:
+            return {}
+        out: dict[int, list[tuple]] = {}
+        db = self._get_conn()
+        for batch in self._chunks(sample_ids):
+            placeholders = ",".join(["%s"] * len(batch))
+            sql = f"""
+                SELECT dspa.sample_id,
+                       population.population_id, population.code, population.name, population.description,
+                       population.latitude, population.longitude, population.elastic_id,
+                       population.superpopulation_id, superpopulation.code, superpopulation.name,
+                       superpopulation.display_colour, superpopulation.display_order
+                FROM dc_sample_pop_assign dspa
+                JOIN population ON dspa.population_id = population.population_id
+                JOIN superpopulation ON population.superpopulation_id = superpopulation.superpopulation_id
+                WHERE dspa.sample_id IN ({placeholders})
+            """
+            cur = db.cursor()
+            cur.execute(sql, batch)
+            for row in cur.fetchall():
+                sid = row[0]
+                out.setdefault(sid, []).append(row[1:])  # drop sid to match old builder offsets
+            cur.close()
+        return out
 
-        select_datacollection_sample_sql = """SELECT dt.code, ag.description, dc.title, dc.data_collection_id, dc.reuse_policy
-                                            FROM file f LEFT JOIN data_type dt ON f.data_type_id = dt.data_type_id
-                                            LEFT JOIN analysis_group ag ON f.analysis_group_id = ag.analysis_group_id
-                                            INNER JOIN sample_file sf ON sf.file_id=f.file_id
-                                            INNER JOIN file_data_collection fdc ON f.file_id=fdc.file_id
-                                            INNER JOIN data_collection dc ON fdc.data_collection_id=dc.data_collection_id
-                                            WHERE sf.sample_id=%s GROUP BY dt.data_type_id, ag.analysis_group_id, dc.data_collection_id"""
-
-        db = connect(
-            host=self.db_config["host"],
-            port=self.db_config["port"],
-            database=self.db_config["database"],
-            user=self.db_config["user"],
-            password=self.db_config["password"],
-        )
-
-        cursor = db.cursor()
-        cursor.execute(select_datacollection_sample_sql, (sample_id,))
-        datacollection = cursor.fetchall()
-        cursor.close()
-        db.close()
-
-        return datacollection
-
-    def fetch_relationship_samples(self, sample_id: int) -> list[tuple]:
-        """Fetch relationship samples from the database. This function is not being used yet
-
-        Args:
-            sample_id (int): sample id information
-
-        Returns:
-            list[tuple]: Info from the DB
+    def preload_datacollections(self, sample_ids: list[int]) -> dict[int, list[tuple]]:
         """
-
-        select_relationship_sample_sql = """SELECT s.name, sr.type FROM sample s, sample_relationship sr WHERE sr.relation_sample_id=s.sample_id AND sr.subject_sample_id=%s"""
-
-        db = connect(
-            host=self.db_config["host"],
-            port=self.db_config["port"],
-            database=self.db_config["database"],
-            user=self.db_config["user"],
-            password=self.db_config["password"],
-        )
-
-        cursor = db.cursor()
-        cursor.execute(select_relationship_sample_sql, (sample_id,))
-        sample_relationship = cursor.fetchall()
-        cursor.close()
-        db.close()
-
-        return sample_relationship
-
-    def fetch_sample_synonyms_sql(self, sample_id: int) -> list[tuple]:
-        """Fetch sample synonyms. This function is not being used yet
-
-        Args:
-            sample_id (int): sample id information
-
-        Returns:
-            list[tuple]: Info from the DB
+        Map: sample_id -> rows matching fetch_dataCollections_samples() but with sample_id first
+              (sample_id, dt.code, ag.description, dc.title, dc_id, dc.reuse_policy)
         """
+        if not sample_ids:
+            return {}
+        out: dict[int, list[tuple]] = {}
+        db = self._get_conn()
+        for batch in self._chunks(sample_ids):
+            placeholders = ",".join(["%s"] * len(batch))
+            sql = f"""
+                SELECT sf.sample_id, dt.code, ag.description, dc.title, dc.data_collection_id, dc.reuse_policy
+                FROM file f
+                LEFT JOIN data_type dt ON f.data_type_id = dt.data_type_id
+                LEFT JOIN analysis_group ag ON f.analysis_group_id = ag.analysis_group_id
+                INNER JOIN sample_file sf ON sf.file_id = f.file_id
+                INNER JOIN file_data_collection fdc ON f.file_id = fdc.file_id
+                INNER JOIN data_collection dc ON fdc.data_collection_id = dc.data_collection_id
+                WHERE sf.sample_id IN ({placeholders})
+                GROUP BY sf.sample_id, dt.data_type_id, ag.analysis_group_id, dc.data_collection_id
+            """
+            cur = db.cursor()
+            cur.execute(sql, batch)
+            for row in cur.fetchall():
+                sid = row[0]
+                out.setdefault(sid, []).append(row[1:])  # drop sid to reuse same builder
+            cur.close()
+        return out
 
-        select_sample_synonyms_sql = (
-            """SELECT synonym from sample_synonym where sample_id = %s"""
-        )
-
-        db = connect(
-            host=self.db_config["host"],
-            port=self.db_config["port"],
-            database=self.db_config["database"],
-            user=self.db_config["user"],
-            password=self.db_config["password"],
-        )
-
-        cursor = db.cursor()
-        cursor.execute(select_sample_synonyms_sql, (sample_id,))
-        sample_synonyms = cursor.fetchall()
-        cursor.close()
-        db.close()
-
-        return sample_synonyms
-
-    def populate_source_samples(self, sample_id: int) -> list:
-        """Populating source samples 
-
-        Args:
-            sample_id (int): sample id information
-
-        Returns:
-            list: A list of dictionary containing source information
+    def preload_relationships(self, sample_ids: list[int]) -> dict[int, list[tuple]]:
         """
-
-        source_sample = []
-        sources = self.fetch_source_samples(sample_id)
-        seen = set()  # a set to ensure only unique entries
-        for row in sources:
-            entry = (row[3], row[1], row[2])
-            if entry not in seen:
-                source_sample.append(
-                    {"url": row[3], "name": row[1], "description": row[2]}
-                )
-                seen.add(entry)
-
-        return source_sample
-
-    def populate_population_samples(self, sample_id: int) -> list:
-        """Populating population samples information
-
-        Args:
-            sample_id (int): sample id information
-
-        Returns:
-            list: A list of dictionary containing the population information
+        Map: sample_id -> [(related_name, relationship_type), ...]
         """
+        if not sample_ids:
+            return {}
+        out: dict[int, list[tuple]] = {}
+        db = self._get_conn()
+        for batch in self._chunks(sample_ids):
+            placeholders = ",".join(["%s"] * len(batch))
+            sql = f"""
+                SELECT sr.subject_sample_id AS sample_id, s.name, sr.type
+                FROM sample_relationship sr
+                JOIN sample s ON sr.relation_sample_id = s.sample_id
+                WHERE sr.subject_sample_id IN ({placeholders})
+            """
+            cur = db.cursor()
+            cur.execute(sql, batch)
+            for sid, name, reltype in cur.fetchall():
+                out.setdefault(sid, []).append((name, reltype))
+            cur.close()
+        return out
 
-        population_sample = []
-        populations = self.fetch_population_samples(sample_id)
-        seen = set()
-        for row in populations:
-            entry = (row[6], row[9], row[2], row[8], row[3], row[1])
-            if entry not in seen:
-                population_sample.append(
-                    {
-                        "elasticId": row[6],
-                        "superpopulationName": row[9],
-                        "name": row[2],
-                        "superpopulationCode": row[8],
-                        "description": row[3],
-                        "code": row[1],
-                    }
-                )
-                seen.add(entry)
+    def preload_synonyms(self, sample_ids: list[int]) -> dict[int, list[str]]:
+        if not sample_ids:
+            return {}
+        out: dict[int, list[str]] = {}
+        db = self._get_conn()
+        for batch in self._chunks(sample_ids):
+            placeholders = ",".join(["%s"] * len(batch))
+            sql = f"SELECT sample_id, synonym FROM sample_synonym WHERE sample_id IN ({placeholders})"
+            cur = db.cursor()
+            cur.execute(sql, batch)
+            for sid, syn in cur.fetchall():
+                if syn:
+                    out.setdefault(sid, []).append(syn)
+            cur.close()
+        return out
 
-        return population_sample
+    # ─────────────────────────── pure builders ───────────────────────────
+    @staticmethod
+    def _build_sources(rows: list[tuple]) -> list[dict[str, Any]]:
+        out, seen = [], set()
+        for _sid, name, desc, url in ((None, r[2], r[3], r[4]) if len(r) == 5 else (None, r[1], r[2], r[3]) for r in rows):
+            key = (url, name, desc)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append({"url": url, "name": name, "description": desc})
+        return out
 
-    def populate_datacollection_samples(self, sample_id: int) -> list:
-        """Populating data collection sample information
+    @staticmethod
+    def _build_populations(rows: list[tuple]) -> list[dict[str, Any]]:
+        out, seen = [], set()
+        for row in rows:
+            # row layout matches fetch_population_samples() (without sample_id)
+            code, name, desc = row[1], row[2], row[3]
+            elastic_id = row[6]
+            sp_code, sp_name = row[8], row[9]
+            key = (elastic_id, sp_name, name, sp_code, desc, code)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append({
+                "elasticId": elastic_id,
+                "superpopulationName": sp_name,
+                "name": name,
+                "superpopulationCode": sp_code,
+                "description": desc,
+                "code": code,
+            })
+        return out
 
-        Args:
-            sample_id (int): sample id information
-
-        Returns:
-            list: A list of dictionary containing the data collection
+    @staticmethod
+    def _build_datacollections(rows: list[tuple]) -> list[dict[str, Any]]:
         """
+        rows: like fetch_dataCollections_samples() (without sample_id)
+              (dt.code, ag.description, dc.title, dc_id, dc.reuse_policy)
+        """
+        per_dc: dict[int, dict] = {}
+        for dtype, ag_desc, title, dc_id, reuse_policy in rows:
+            if not dc_id:
+                continue
+            if dc_id not in per_dc:
+                per_dc[dc_id] = {
+                    "title": title,
+                    "dataReusePolicy": reuse_policy,
+                    "_dtype_seen": {},
+                }
+            dc = per_dc[dc_id]
+            if dtype:
+                dc["_dtype_seen"][dtype] = 1
+                if ag_desc:
+                    bucket = dc.setdefault(dtype, [])
+                    if ag_desc not in bucket:
+                        bucket.append(ag_desc)
+        out: list[dict] = []
+        for dc_id in sorted(per_dc.keys(), key=lambda x: str(x)):
+            dc = per_dc[dc_id].copy()
+            dtype_list = list(dc.pop("_dtype_seen").keys())
+            if dtype_list:
+                dc["dataTypes"] = dtype_list
+            out.append(dc)
+        return out
 
-        dataCollections = {"dataTypes": [], "dataReusePolicy": None, "title": None}
-        dataCollection_sample = []
-        datacollections = self.fetch_dataCollections_samples(sample_id)
-        seen = set()
-        for row in datacollections:
-            entry = (row[4], row[2])
-            if entry not in seen:
-                dataCollections.update({"dataReusePolicy": row[4], "title": row[2]})
-                dataCollections[row[0]] = []
-                if row[1] not in dataCollections[row[0]]:
-                    dataCollections[row[0]].append(row[1])
-                if row[0] not in dataCollections["dataTypes"]:
-                    dataCollections["dataTypes"].append(row[0])
+    @staticmethod
+    def _build_relationships(rows: list[tuple]) -> list[dict[str, str]]:
+        out, seen = [], set()
+        for name, reltype in rows:
+            key = (name, reltype)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append({"relatedSampleName": name, "relationship": reltype})
+        return out
 
-                    dataCollection_sample.append(dataCollections)
-
-                    seen.add(entry)
-
-        return dataCollection_sample
-
-    def populate_sample_synonyms(self, sample_id: int) -> list[str]:
-        """Return unique, non-empty synonyms for a sample."""
-        rows = self.fetch_sample_synonyms_sql(sample_id)  # [(synonym,), ...]
-        seen = set()
-        out: list[str] = []
-        for tup in rows or []:
-            syn = tup[0] if tup else None
+    @staticmethod
+    def _build_synonyms(rows: list[str]) -> list[str]:
+        out, seen = [], set()
+        for syn in rows or []:
             if syn and syn not in seen:
                 seen.add(syn)
                 out.append(syn)
         return out
 
-    def build_the_dictionary_structure(self, row: tuple) -> dict[str, Any]:
-        """Building the dictionary structure
+    # ─────────────── builder (uses preloaded maps when provided) ───────────────
+    def build_the_dictionary_structure(
+        self,
+        row: tuple,
+        *,
+        sources_map: dict[int, list[tuple]] | None = None,
+        populations_map: dict[int, list[tuple]] | None = None,
+        dcs_map: dict[int, list[tuple]] | None = None,
+        rels_map: dict[int, list[tuple]] | None = None,
+        syns_map: dict[int, list[str]] | None = None,
+    ) -> dict[str, Any]:
+        sample_id, name, biosample_id, sex = row[0], row[1], row[2], row[3]
 
-        Args:
-            row (tuple): Row from the fetch samples return
+        # fall back to per-sample fetch if maps not provided
+        src_rows = sources_map.get(sample_id, []) if sources_map is not None else [
+            (None, *r) for r in self.fetch_source_samples(sample_id)
+        ]
+        pop_rows = populations_map.get(sample_id, []) if populations_map is not None else self.fetch_population_samples(sample_id)
+        dc_rows  = dcs_map.get(sample_id, []) if dcs_map is not None else self.fetch_dataCollections_samples(sample_id)
+        rel_rows = rels_map.get(sample_id, []) if rels_map is not None else self.fetch_relationship_samples(sample_id)
+        syn_rows = syns_map.get(sample_id, []) if syns_map is not None else [r[0] for r in self.fetch_sample_synonyms_sql(sample_id)]
 
-        Returns:
-            dict[str, Any]: The updated dictionary
-        """
-
-        self.samples_dict.update(
+        doc = create_the_dictionary_structure()
+        doc.update(
             {
-                "biosampleId": row[2],
-                "sex": row[3],
-                "name": row[1],
-                "source": self.populate_source_samples(row[0]),
-                "populations": self.populate_population_samples(row[0]),
-                "dataCollections": self.populate_datacollection_samples(row[0]),
-                "synonyms": self.populate_sample_synonyms(row[0]),
+                "biosampleId": biosample_id,
+                "sex": sex,
+                "name": name,
+                "source": self._build_sources(src_rows),
+                "populations": self._build_populations(pop_rows),
+                "dataCollections": self._build_datacollections(dc_rows),
+                "relatedSample": self._build_relationships(rel_rows),
+                "synonyms": self._build_synonyms(syn_rows),
             }
         )
-
-        return self.samples_dict
+        return doc
