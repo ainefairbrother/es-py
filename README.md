@@ -5,7 +5,7 @@
 This repository indexers - one per index type. These do the following: 
 1. Query MySQL 
 2. Aggregate rows into the document shape expected by the API 
-3. Bulk index documents into Elasticsearch using either create or update
+3. Bulk indexes documents into Elasticsearch using either create or update
 
 ### Requirements
 
@@ -27,16 +27,20 @@ cd es-py
 Run Elasticsearch (single node, security disabled for local dev). See full instructions [here](https://www.elastic.co/docs/deploy-manage/deploy/self-managed/install-elasticsearch-docker-basic).
 
 ```bash
+# create a dedicated network (only once)
 docker network create elastic
-docker pull docker.elastic.co/elasticsearch/elasticsearch:9.0.0
 
+# pull a compatible 8.x image (example tag below)
+docker pull docker.elastic.co/elasticsearch/elasticsearch:8.13.4
+
+# run ES (single node, security disabled for local dev)
 docker run -d --name es01 --net elastic \
   -p 9200:9200 -p 9300:9300 \
   -e "discovery.type=single-node" \
   -e "xpack.security.enabled=false" \
-  docker.elastic.co/elasticsearch/elasticsearch:9.0.0
+  docker.elastic.co/elasticsearch/elasticsearch:8.13.4
 
-# check it's running
+# check it's up
 curl http://localhost:9200/
 ```
 
@@ -44,44 +48,24 @@ Install Python 3.12 using pyenv
 
 ```bash
 pyenv install 3.12
+pyenv local 3.12.11
 ```
 
 Create and activate virtual environment
 
 ```bash
-pyenv local 3.12.11
 uv venv espy-env
 source espy-env/bin/activate
-```
 
-Install es-py requirements
-
-```bash
-cd /Users/fairbrot/Documents/igsr/es/es-py
+# install es-py deps
 uv pip install -r requirements.txt
 ```
 
 Example build, check and delete of the `population` index
 
-```bash
-cd es-py
+Create `config.ini`
 
-# build
-python3 -m index.population_index.indexing \
---config_file config.ini \
---es_host http://127.0.0.1:9200/ \
---type_of create
-
-# check
-curl -X GET "http://localhost:9200/population/_search" -H 'Content-Type: application/json'
-
-# delete
-curl -X DELETE 'http://localhost:9200/population'
-```
-
-Where `config.ini` looks like
-
-```.ini
+```ini
 [database]
 host=
 port=
@@ -89,6 +73,26 @@ user=
 password=
 name=
 ```
+
+Then 
+
+```bash
+cd es-py
+
+# build (create)
+python3 -m index.population_index.indexing \
+  --config_file config.ini \
+  --es_host http://127.0.0.1:9200/ \
+  --type_of create
+
+# quick check
+curl -X GET "http://localhost:9200/population/_search" \
+  -H 'Content-Type: application/json'
+
+# delete when needed
+curl -X DELETE 'http://localhost:9200/population'
+```
+
 
 ### Testing
 
