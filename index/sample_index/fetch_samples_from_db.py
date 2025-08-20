@@ -276,6 +276,18 @@ class SampleDetailsFetcher:
 
         return dataCollection_sample
 
+    def populate_sample_synonyms(self, sample_id: int) -> list[str]:
+        """Return unique, non-empty synonyms for a sample."""
+        rows = self.fetch_sample_synonyms_sql(sample_id)  # [(synonym,), ...]
+        seen = set()
+        out: list[str] = []
+        for tup in rows or []:
+            syn = tup[0] if tup else None
+            if syn and syn not in seen:
+                seen.add(syn)
+                out.append(syn)
+        return out
+
     def build_the_dictionary_structure(self, row: tuple) -> dict[str, Any]:
         """Building the dictionary structure
 
@@ -294,6 +306,7 @@ class SampleDetailsFetcher:
                 "source": self.populate_source_samples(row[0]),
                 "populations": self.populate_population_samples(row[0]),
                 "dataCollections": self.populate_datacollection_samples(row[0]),
+                "synonyms": self.populate_sample_synonyms(row[0]),
             }
         )
 
