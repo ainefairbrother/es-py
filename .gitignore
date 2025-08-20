@@ -1,0 +1,11 @@
+*.py[cod]
+.DS_Store
+.coverage
+./**/__pycache__
+./**/**/__pycache__
+./**/**/***/__pycache__
+./index/file_index/fetch_information_from_db.py
+./es_py.egg-info/
+es_py.egg-info/
+__pycache__/
+*.pyc
