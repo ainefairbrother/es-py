@@ -1,7 +1,7 @@
 import mysql.connector
 from collections import defaultdict
 from typing import Any, Dict, List, Tuple
-
+from .utils import create_the_dictionary_structure
 
 class PopulationDetailsFetcher:
     def __init__(self, db_config: dict[str, Any]):

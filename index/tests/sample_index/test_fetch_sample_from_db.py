@@ -4,6 +4,7 @@ from index.sample_index.fetch_samples_from_db import SampleDetailsFetcher
 from typing import Any
 from pytest_mock import MockerFixture
 
+# ───────────────────────── Fixtures ──────────────────────────
 
 @pytest.fixture
 def db_config()-> dict[str, Any]:
@@ -33,6 +34,7 @@ def fetcher(db_config: dict[str, Any]) -> SampleDetailsFetcher:
     """
     return SampleDetailsFetcher(db_config)
 
+# ────────────────────────── Tests ────────────────────────────
 
 def test_fetch_samples(mocker: MockerFixture, fetcher: SampleDetailsFetcher):
     """Test for SampleDetailsFetcher: fetch_samples

@@ -1,6 +1,6 @@
 from mysql.connector import connect
 from typing import Any
-
+from .utils import create_the_dictionary_structure
 
 class FetchSPFromDB:
     """Fetching the Superpopulation from Database class"""
@@ -60,19 +60,3 @@ class FetchSPFromDB:
         )
 
         return superpopulation
-
-
-def create_the_dictionary_structure() -> dict[str, Any]:
-    """Create the dictionary structure
-
-    Returns:
-        dict[str, Any]: New dictionary
-    """
-    superpopulation = {
-        "elasticId": None,
-        "name": None,
-        "display_colour": None,
-        "display_order": None,
-    }
-
-    return superpopulation

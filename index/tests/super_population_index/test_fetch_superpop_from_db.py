@@ -4,6 +4,8 @@ from index.super_population_index.fetch_information_from_db import FetchSPFromDB
 from pytest_mock import MockerFixture
 from typing import Any
 
+# ───────────────────────── Fixtures ──────────────────────────
+
 @pytest.fixture
 def db_config() -> dict[str, Any]:
     """DB configuration
@@ -32,6 +34,7 @@ def fetcher(db_config: dict[str, Any])-> FetchSPFromDB:
     """    
     return FetchSPFromDB(db_config)
 
+# ────────────────────────── Tests ────────────────────────────
 
 def test_fetch_information_from_db(mocker: MockerFixture, fetcher:FetchSPFromDB):
     """Test for FetchSPFromDB - fetch_information_from_DB
