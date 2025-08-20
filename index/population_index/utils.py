@@ -14,15 +14,11 @@ def create_the_dictionary_structure() -> dict[str, Any]:
         "superpopulation": {
             "code": None,
             "name": None,
-            "display_color": None,
+            "display_colour": None,
             "display_order": None,
         },
 
         # these may stay empty
         "dataCollections": [],
         "overlappingPopulations": []
-        # "overlappingPopulations": {
-        #     "sharedSampleCount": 0,
-        #     "sharedSamples": []
-        # },
     }

@@ -185,7 +185,7 @@ class PopulationDetailsFetcher:
             "superpopulation": {
                 "code": row[8],
                 "name": row[9],
-                "display_color": row[10],
+                "display_colour": row[10],
                 "display_order": row[11],
             },
             "dataCollections": [],
