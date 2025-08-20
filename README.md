@@ -2,9 +2,10 @@
 
 `es-py` is a ightweight Python toolkit to build IGSR’s Elasticsearch indices from MySQL, replacing the legacy Perl loaders. It supports bulk create and update operations and is compatible with Elasticsearch V8.x. The goal is to keep the new indices functionally equivalent to the old indices while being easier to develop and test.
 
-This repository indexers - one per index type. These do the following: 
-1. Query MySQL 
-2. Aggregate rows into the document shape expected by the API 
+This repository contains indexers - one per index type. These do the following:
+
+1. Query MySQL
+2. Aggregate rows into the document shape expected by the API
 3. Bulk indexes documents into Elasticsearch using either create or update
 
 ### Requirements
@@ -74,7 +75,7 @@ password=
 name=
 ```
 
-Then 
+Then
 
 ```bash
 cd es-py
@@ -92,7 +93,6 @@ curl -X GET "http://localhost:9200/population/_search" \
 # delete when needed
 curl -X DELETE 'http://localhost:9200/population'
 ```
-
 
 ### Testing
 
