@@ -1,15 +1,47 @@
+"""Sample details fetcher.
+
+Provides DB accessors to retrieve and assemble information needed to build
+`sample` documents for Elasticsearch. This module encapsulates SQL queries,
+batched preloading, and shaping of results into a consistent dictionary 
+structure suitable for indexing.
+
+All functionality is exposed via the `SampleDetailsFetcher` class.
+"""
+
+# ──────────────────────────────────────────────────────────────
+# Imports
+# ──────────────────────────────────────────────────────────────
+
 from mysql.connector import connect
 from typing import Any, Iterable
 from index.sample_index.utils import create_the_dictionary_structure
 
 
+# ──────────────────────────────────────────────────────────────
+# Fetcher
+# ──────────────────────────────────────────────────────────────
+
 class SampleDetailsFetcher:
+    """Fetch sample metadata and related entities from the database."""
+
     def __init__(self, db_config: dict):
+        """Initialise the fetcher with database configuration.
+
+        Args:
+            db_config (dict): Database configuration with keys "host", "port",
+                "database", "user", "password".
+        """
         self.db_config = db_config
         self._conn = None  # single reused connection
 
     # ───────────────────────── DB connection helpers ─────────────────────────
     def _get_conn(self):
+        """Return a live MySQL connection, reconnecting if necessary.
+
+        Reuses a single connection across calls, attempting a light reconnect
+        if the connection has dropped. Falls back to creating a fresh connection
+        if the reconnect fails.
+        """
         if self._conn is None:
             self._conn = connect(
                 host=self.db_config["host"],
@@ -36,6 +68,7 @@ class SampleDetailsFetcher:
         return self._conn
 
     def close(self):
+        """Close the underlying connection (if open) and reset state."""
         if self._conn is not None:
             try:
                 self._conn.close()
@@ -44,6 +77,11 @@ class SampleDetailsFetcher:
 
     # ───────────────────────────── queries ─────────────────────────────
     def fetch_samples(self) -> list[tuple]:
+        """Fetch base sample rows.
+
+        Returns:
+            list[tuple]: Rows of `(sample_id, name, biosample_id, sex)`.
+        """
         sql = "SELECT s.sample_id, s.name, s.biosample_id, s.sex FROM sample s"
         db = self._get_conn()
         cur = db.cursor()
@@ -52,15 +90,32 @@ class SampleDetailsFetcher:
         cur.close()
         return rows
 
-    # ─────────────── batch preloads (eliminate N+1) ───────────────
+    # ─────────────── batch preloads ────────────────────────────────────
     @staticmethod
     def _chunks(ids: list[int], size: int = 1000) -> Iterable[list[int]]:
+        """Yield slices of `ids` of at most `size` elements.
+
+        Args:
+            ids (list[int]): Identifiers to split into chunks.
+            size (int): Maximum chunk size.
+
+        Yields:
+            list[int]: Chunk of identifiers.
+        """
         for i in range(0, len(ids), size):
             yield ids[i : i + size]
 
     def preload_sources(self, sample_ids: list[int]) -> dict[int, list[tuple]]:
-        """
-        Map: sample_id -> [(sample_source_id, name, description, url), ...]
+        """Preload sample sources for a batch of sample IDs.
+
+        Produces a mapping suitable for fast document construction without
+        per-sample queries.
+
+        Args:
+            sample_ids (list[int]): Sample identifiers.
+
+        Returns:
+            dict[int, list[tuple]]: Map `sample_id -> [(sample_source_id, name, description, url), ...]`.
         """
         if not sample_ids:
             return {}
@@ -82,8 +137,16 @@ class SampleDetailsFetcher:
         return out
 
     def preload_populations(self, sample_ids: list[int]) -> dict[int, list[tuple]]:
-        """
-        Map: sample_id -> rows matching fetch_population_samples() shape but with sample_id
+        """Preload populations for a batch of sample IDs.
+
+        Returns rows in the same shape as `fetch_population_samples()` (but with
+        `sample_id` included and then dropped so offsets match the old builder).
+
+        Args:
+            sample_ids (list[int]): Sample identifiers.
+
+        Returns:
+            dict[int, list[tuple]]: Map `sample_id -> rows` matching the legacy shape.
         """
         if not sample_ids:
             return {}
@@ -113,9 +176,14 @@ class SampleDetailsFetcher:
         return out
 
     def preload_datacollections(self, sample_ids: list[int]) -> dict[int, list[tuple]]:
-        """
-        Map: sample_id -> rows matching fetch_dataCollections_samples() but with sample_id first
-              (sample_id, dt.code, ag.description, dc.title, dc_id, dc.reuse_policy)
+        """Preload data collections linked to samples.
+
+        Args:
+            sample_ids (list[int]): Sample identifiers.
+
+        Returns:
+            dict[int, list[tuple]]: Map `sample_id -> rows` in the shape
+            `(dt.code, ag.description, dc.title, dc_id, dc.reuse_policy)`.
         """
         if not sample_ids:
             return {}
@@ -145,8 +213,13 @@ class SampleDetailsFetcher:
         return out
 
     def preload_relationships(self, sample_ids: list[int]) -> dict[int, list[tuple]]:
-        """
-        Map: sample_id -> [(related_name, relationship_type), ...]
+        """Preload sample relationships for a batch of sample IDs.
+
+        Args:
+            sample_ids (list[int]): Sample identifiers.
+
+        Returns:
+            dict[int, list[tuple]]: Map `sample_id -> [(related_name, relationship_type), ...]`.
         """
         if not sample_ids:
             return {}
@@ -168,6 +241,14 @@ class SampleDetailsFetcher:
         return out
 
     def preload_synonyms(self, sample_ids: list[int]) -> dict[int, list[str]]:
+        """Preload sample synonyms for a batch of sample IDs.
+
+        Args:
+            sample_ids (list[int]): Sample identifiers.
+
+        Returns:
+            dict[int, list[str]]: Map `sample_id -> [synonym, ...]`.
+        """
         if not sample_ids:
             return {}
         out: dict[int, list[str]] = {}
@@ -183,9 +264,17 @@ class SampleDetailsFetcher:
             cur.close()
         return out
 
-    # ─────────────────────────── pure builders ───────────────────────────
+    # ─────────────────────────── builders ──────────────────────────────
     @staticmethod
     def _build_sources(rows: list[tuple]) -> list[dict[str, Any]]:
+        """Build the `source` subdocument list.
+
+        Args:
+            rows (list[tuple]): Rows from `preload_sources` or per-sample fetch.
+
+        Returns:
+            list[dict[str, Any]]: De-duplicated list of `{"url","name","description"}`.
+        """
         out, seen = [], set()
         for _sid, name, desc, url in (
             (None, r[2], r[3], r[4]) if len(r) == 5 else (None, r[1], r[2], r[3])
@@ -200,6 +289,15 @@ class SampleDetailsFetcher:
 
     @staticmethod
     def _build_populations(rows: list[tuple]) -> list[dict[str, Any]]:
+        """Build the `populations` subdocument list.
+
+        Args:
+            rows (list[tuple]): Rows from `preload_populations` (legacy layout).
+
+        Returns:
+            list[dict[str, Any]]: Population entries referencing elastic and
+            superpopulation identifiers.
+        """
         out, seen = [], set()
         for row in rows:
             # row layout matches fetch_population_samples() (without sample_id)
@@ -224,9 +322,15 @@ class SampleDetailsFetcher:
 
     @staticmethod
     def _build_datacollections(rows: list[tuple]) -> list[dict[str, Any]]:
-        """
-        rows: like fetch_dataCollections_samples() (without sample_id)
-              (dt.code, ag.description, dc.title, dc_id, dc.reuse_policy)
+        """Build the `dataCollections` subdocument list.
+
+        Args:
+            rows (list[tuple]): `(dt.code, ag.description, dc.title, dc_id, dc.reuse_policy)`.
+
+        Returns:
+            list[dict[str, Any]]: Aggregated list per data collection with
+            optional `sequence`, `alignment`, `variants`, and derived
+            `dataTypes` fields.
         """
         per_dc: dict[int, dict] = {}
         for dtype, ag_desc, title, dc_id, reuse_policy in rows:
@@ -256,6 +360,14 @@ class SampleDetailsFetcher:
 
     @staticmethod
     def _build_relationships(rows: list[tuple]) -> list[dict[str, str]]:
+        """Build the `relatedSample` subdocument list.
+
+        Args:
+            rows (list[tuple]): `(related_name, relationship_type)`.
+
+        Returns:
+            list[dict[str, str]]: Relationship entries.
+        """
         out, seen = [], set()
         for name, reltype in rows:
             key = (name, reltype)
@@ -267,6 +379,7 @@ class SampleDetailsFetcher:
 
     @staticmethod
     def _build_synonyms(rows: list[str]) -> list[str]:
+        """Build the `synonyms` list (deduplicated, order-stable)."""
         out, seen = [], set()
         for syn in rows or []:
             if syn and syn not in seen:
@@ -274,7 +387,7 @@ class SampleDetailsFetcher:
                 out.append(syn)
         return out
 
-    # ─────────────── builder (uses preloaded maps when provided) ───────────────
+    # ─────────────── dict builder ───────────────────────────────────────────
     def build_the_dictionary_structure(
         self,
         row: tuple,
@@ -285,6 +398,21 @@ class SampleDetailsFetcher:
         rels_map: dict[int, list[tuple]] | None = None,
         syns_map: dict[int, list[str]] | None = None,
     ) -> dict[str, Any]:
+        """Construct the full sample document for indexing.
+
+        Falls back to per-sample queries if preloaded maps are not supplied.
+
+        Args:
+            row (tuple): Base row from `fetch_samples()`.
+            sources_map (dict[int, list[tuple]] | None): Preloaded sources.
+            populations_map (dict[int, list[tuple]] | None): Preloaded populations.
+            dcs_map (dict[int, list[tuple]] | None): Preloaded data collections.
+            rels_map (dict[int, list[tuple]] | None): Preloaded relationships.
+            syns_map (dict[int, list[str]] | None): Preloaded synonyms.
+
+        Returns:
+            dict[str, Any]: Sample document ready for indexing.
+        """
         sample_id, name, biosample_id, sex = row[0], row[1], row[2], row[3]
 
         # fall back to per-sample fetch if maps not provided

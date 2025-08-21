@@ -1,23 +1,45 @@
+"""Population details fetcher.
+
+Provides DB accessors to retrieve and assemble information needed to build
+`population` documents for Elasticsearch. This module encapsulates the SQL
+queries and the shaping of results into a consistent dictionary structure
+suitable for indexing.
+
+All functionality is exposed via the `PopulationDetailsFetcher` class.
+"""
+
+# ──────────────────────────────────────────────────────────────
+# Imports
+# ──────────────────────────────────────────────────────────────
+
 import mysql.connector
 from collections import defaultdict
 from typing import Any, Dict, List, Tuple
 from .utils import create_the_dictionary_structure
 
 
+# ──────────────────────────────────────────────────────────────
+# Fetcher
+# ──────────────────────────────────────────────────────────────
+
 class PopulationDetailsFetcher:
+    """Fetch population metadata and related entities from the database."""
+
     def __init__(self, db_config: dict[str, Any]):
-        """Initializing the population details fetcher
+        """Initialise the population details fetcher.
 
         Args:
-            db_config (dict): DB configuration dictionary
+            db_config (dict): Database configuration dictionary with keys
+                "host", "port", "database", "user", "password".
         """
         self.db_config = db_config
 
     def fetch_population(self) -> List[Tuple]:
-        """Fetches population information
+        """Fetch population summary rows.
 
         Returns:
-            List[Tuple]: List of rows containing the population information
+            List[Tuple]: Rows containing the population information including
+            counts, superpopulation details, and identifiers.
         """
         query = """
             SELECT p.code, p.name, p.description, p.latitude, p.longitude, p.elastic_id, p.display_order,
@@ -41,10 +63,11 @@ class PopulationDetailsFetcher:
             return cursor.fetchall()
 
     def fetch_population_ids(self) -> List[int]:
-        """Fetching population ids from the database
+        """Fetch population IDs.
 
         Returns:
-            List[int]: List of ids, used to fetch data collection and overlap population details
+            List[int]: Population IDs used to fetch data-collection and
+            overlap-population details.
         """
 
         query = "SELECT population_id FROM population"
@@ -64,13 +87,17 @@ class PopulationDetailsFetcher:
     def fetch_data_collection_details(
         self, pop_ids: List[int]
     ) -> Dict[int, List[Tuple]]:
-        """Fetches data collection details, so it reduces the query to the DB
+        """Fetch data-collection details for populations.
+
+        Preloads data to reduce the number of database queries when building
+        population documents.
 
         Args:
-            pop_ids (List[int]): list of pop ids
+            pop_ids (List[int]): Population IDs.
 
         Returns:
-            Dict[int, List[Tuple]]: A dictionary containing the key and the list of rows from the db
+            Dict[int, List[Tuple]]: Mapping `population_id -> list of tuples`
+            where each tuple is `(dt.code, ag.description, dc.title, dc_id, dc.reuse_policy)`.
         """
         if not pop_ids:
             return {}
@@ -112,13 +139,14 @@ class PopulationDetailsFetcher:
     def fetch_overlap_population_details(
         self, pop_ids: List[int]
     ) -> Dict[int, List[Dict[str, Any]]]:
-        """Fetches overlap population details
+        """Fetch overlapping-population details.
 
         Args:
-            pop_ids (List[int]): list of pop ids
+            pop_ids (List[int]): Population IDs.
 
         Returns:
-            Dict[int, List[Dict[str, Any]]]: A dictionary containing the key and the list of rows from the db
+            Dict[int, List[Dict[str, Any]]]: Mapping `population_id -> list of rows`
+            where each row contains overlap information and shared sample names.
         """
         if not pop_ids:
             return {}
@@ -162,15 +190,17 @@ class PopulationDetailsFetcher:
         data_collection_map: Dict[int, List[Tuple]],
         overlap_map: Dict[int, List[Dict[str, Any]]],
     ) -> Dict[str, Any]:
-        """Build population information dictionary (doc)
+        """Build a population document for indexing.
 
         Args:
-            row (Tuple): Result from the fetch_population function
-            data_collection_map (Dict[int, List[Tuple]]): Result from the fetch data_collection_details
-            overlap_map (Dict[int, List[Dict[str, Any]]]): Result from the overlap_map details
+            row (Tuple): A row from `fetch_population()`.
+            data_collection_map (Dict[int, List[Tuple]]): Preloaded data-collection
+                details keyed by population ID.
+            overlap_map (Dict[int, List[Dict[str, Any]]]): Preloaded overlap details
+                keyed by population ID.
 
         Returns:
-            Dict[str, Any]: Population doc
+            Dict[str, Any]: Population document ready for indexing.
         """
         pop_id = row[12]
 

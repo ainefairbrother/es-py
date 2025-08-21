@@ -1,26 +1,44 @@
+"""Analysis group details fetcher.
+
+Provides DB accessors to retrieve and assemble information needed to build
+`analysis_group` documents for Elasticsearch. This module encapsulates the
+SQL query and the shaping of results into a consistent dictionary structure
+suitable for indexing.
+
+All functionality is exposed via the `FetchAGFromDB` class.
+"""
+
+# ──────────────────────────────────────────────────────────────
+# Imports
+# ──────────────────────────────────────────────────────────────
+
 from mysql.connector import connect
 from typing import Any
 from .utils import create_the_dictionary_structure
 
 
+# ──────────────────────────────────────────────────────────────
+# Fetcher
+# ──────────────────────────────────────────────────────────────
+
 class FetchAGFromDB:
-    """Fetch Analysis Group from DB class"""
+    """Fetcher for analysis group information."""
 
     def __init__(self, data: dict[str, Any]):
-        """Initialization of the class
+        """Initialise the fetcher.
 
         Args:
-            data (dict[str, Any]): Configuration Data
+            data (dict[str, Any]): Configuration data containing database
+                connection parameters (e.g., host, port, database, user, password).
         """
         self.data = data
 
     def fetch_information_from_DB(self) -> list[tuple]:
-        """Fetch analysis group information from database
+        """Fetch analysis group information from the database.
 
         Returns:
-            list[tuple]: Rows of information from the database
+            list[tuple]: Rows of analysis group data as returned by MySQL.
         """
-
         fetch_ag_sql = """SELECT ag.* from file f INNER JOIN analysis_group ag ON f.analysis_group_id = ag.analysis_group_id INNER JOIN sample_file sf on sf.file_id = f.file_id GROUP BY ag.analysis_group_id"""
 
         host = self.data["host"]
@@ -41,15 +59,15 @@ class FetchAGFromDB:
         return ag
 
     def build_ag_info(self, row: tuple) -> dict[str, Any]:
-        """Build analysis group information
+        """Build the analysis group dictionary for indexing.
 
         Args:
-            row (tuple): Row, containing the information from the database
+            row (tuple): A single row returned from :meth:`fetch_information_from_DB`.
 
         Returns:
-            dict[str, Any]: Updated dictionary containing the analysis group information
+            dict[str, Any]: Dictionary containing the analysis group fields
+                (`code`, `description`, `shortTitle`, `displayOrder`) ready for indexing.
         """
-
         analysis_group = create_the_dictionary_structure()
 
         analysis_group.update(

@@ -1,3 +1,22 @@
+"""Sample indexer.
+
+Provides a CLI and programmatic API to build and (re)index the `sample`
+index in Elasticsearch from the IGSR database.
+
+This module:
+  * Reads ES settings/mappings from a local JSON file.
+  * Fetches sample data and transforms rows into ES documents.
+  * Creates or updates the ES index via bulk operations, with batched
+    preload queries to avoid N+1 database access patterns.
+
+The script uses Click for the CLI and is safe to import for use from
+other modules (see `create_data()`).
+"""
+
+# ──────────────────────────────────────────────────────────────
+# Imports
+# ──────────────────────────────────────────────────────────────
+
 import click
 import sys
 import json
@@ -6,19 +25,28 @@ from index.elasticsearch_indexer import ElasticSearchIndexer
 from .fetch_information_from_db import SampleDetailsFetcher
 from index.config_read import read_from_config_file
 
+
+# ──────────────────────────────────────────────────────────────
+# Constants
+# ──────────────────────────────────────────────────────────────
+
 json_file = "index/sample_index/sample.json"
 
 
+# ──────────────────────────────────────────────────────────────
+# Indexer
+# ──────────────────────────────────────────────────────────────
+
 class SampleIndexer:
-    """SampleIndexer Class"""
+    """Indexer for the `sample` index."""
 
     def __init__(self, config_file: str, es_host: str, type_of: str):
-        """Initializing of the Sample Indexer class
+        """Initialise the Sample indexer.
 
         Args:
-            config_file (str): Configuration file
-            es_host (str): Elasticsearch host
-            type_of (str): Type of whether create or update
+            config_file (str): Path to configuration file with DB credentials.
+            es_host (str): Elasticsearch host URL.
+            type_of (str): Operation type (e.g., "create" or "update").
         """
         self.config_file = config_file
         self.es_host = es_host
@@ -29,10 +57,10 @@ class SampleIndexer:
 
     @property
     def data(self):
-        """Property function for data
+        """Lazy-read configuration data.
 
         Returns:
-            _type_: self.data
+            Any: Parsed configuration dictionary.
         """
         if self._data is None:
             self._data = read_from_config_file(self.config_file)
@@ -41,10 +69,10 @@ class SampleIndexer:
 
     @property
     def fetcher(self):
-        """Property function of fetcher
+        """Lazy-initialise and return the DB fetcher.
 
         Returns:
-            _type_: self.fetcher
+            SampleDetailsFetcher: Fetcher instance.
         """
         if self._fetcher is None:
             self._fetcher = SampleDetailsFetcher(self.data)
@@ -52,20 +80,20 @@ class SampleIndexer:
 
     @property
     def indexer(self):
-        """Property function of indexer
+        """Lazy-initialise and return the Elasticsearch indexer.
 
         Returns:
-            _type_: self.indexer
+            ElasticSearchIndexer: Indexer instance targeting the `sample` index.
         """
         if self._indexer is None:
             self._indexer = ElasticSearchIndexer(self.es_host, "sample")
         return self._indexer
 
     def load_json_file(self) -> dict[str, Any]:
-        """Loading Json file to get the settings and the mappings
+        """Load index settings and mappings JSON.
 
         Returns:
-            dict[str, Any]: json data
+            dict[str, Any]: Parsed JSON containing "settings" and "mappings".
         """
         with open(json_file, "r") as file:
             data = json.load(file)
@@ -73,10 +101,10 @@ class SampleIndexer:
         return data
 
     def create_sample_index(self) -> bool:
-        """Create Sample index
+        """Create the `sample` index in Elasticsearch.
 
         Returns:
-            bool: True or False if index is created
+            bool: True if the index was created successfully, otherwise False.
         """
         json_data = self.load_json_file()
         sample = self.indexer.create_index(json_data["settings"], json_data["mappings"])
@@ -84,7 +112,11 @@ class SampleIndexer:
         return sample
 
     def generate_actions(self):
-        """Generate actions that will be used for bulk index (with batched preloads)."""
+        """Generate bulk indexing actions with batched preloads.
+
+        Yields:
+            dict: Bulk indexing actions produced by `ElasticSearchIndexer.index_data`.
+        """
         samples_info = self.fetcher.fetch_samples()
         sample_ids = [int(r[0]) for r in samples_info]  # sample_id
 
@@ -108,10 +140,12 @@ class SampleIndexer:
             yield self.indexer.index_data(samples_data, code, self.type_of)
 
     def build_and_index_sample_info(self):
-        """Build and index sample information
+        """Bulk index sample documents.
+
+        Ensures the DB connection is closed even if the bulk operation raises.
 
         Returns:
-            _type_: Bulk actions
+            Any: Result of the bulk indexing operation.
         """
         actions = self.generate_actions()
         try:
@@ -130,6 +164,10 @@ class SampleIndexer:
                 pass
 
 
+# ──────────────────────────────────────────────────────────────
+# CLI
+# ──────────────────────────────────────────────────────────────
+
 @click.command()
 @click.option(
     "--config_file",
@@ -143,9 +181,20 @@ class SampleIndexer:
     "--type_of", "-t", type=str, help="Update or create an index", required=True
 )
 def create_data(config_file: str, es_host: str, type_of: str):
+    """CLI entry point to build and (re)index the `sample` index.
+
+    Args:
+        config_file (str): Path to configuration file with DB connection details.
+        es_host (str): Elasticsearch host URL.
+        type_of (str): Operation type, such as "create" or "update".
+    """
     sample_indexer = SampleIndexer(config_file, es_host, type_of)
     sample_indexer.build_and_index_sample_info()
 
+
+# ──────────────────────────────────────────────────────────────
+# Script entry
+# ──────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     create_data()

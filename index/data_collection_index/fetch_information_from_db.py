@@ -1,16 +1,40 @@
+"""Data Collection details fetcher.
+
+Provides DB accessors to retrieve and assemble information needed to build
+`data_collections` documents for Elasticsearch. This module encapsulates
+SQL queries and the shaping of results into a consistent dictionary
+structure suitable for indexing.
+
+All functionality is exposed via the `DCDetailsFetcher` class.
+"""
+
+# ──────────────────────────────────────────────────────────────
+# Imports
+# ──────────────────────────────────────────────────────────────
+
 from mysql.connector import connect
 from typing import Any
 from .utils import create_the_dictionary_structure
 
 
+# ──────────────────────────────────────────────────────────────
+# Fetcher
+# ──────────────────────────────────────────────────────────────
+
 class DCDetailsFetcher:
-    """DataCollectionDetails Fetcher class"""
+    """Data collection details fetcher.
+
+    Encapsulates queries to the relational database to obtain data collection
+    rows and their related counts/publications/analysis information, and to
+    assemble these into the dictionary structure expected by the indexer.
+    """
 
     def __init__(self, db_config: dict):
-        """Initialization of the DCDetailsFetcher clasd
+        """Initialise the fetcher with database configuration.
 
         Args:
-            db_config (dict): DB configuration
+            db_config (dict): Database configuration containing keys:
+                'host', 'port', 'user', 'password', 'database'.
         """
         self.host = db_config["host"]
         self.port = db_config["port"]
@@ -19,12 +43,11 @@ class DCDetailsFetcher:
         self.database = db_config["database"]
 
     def fetch_datacollections(self) -> list[tuple]:
-        """Fetch dataCollections from the database
+        """Fetch all data collections.
 
         Returns:
-            list[tuple]: List of rows from the database
+            list[tuple]: List of rows from the `data_collection` table.
         """
-
         select_all_dc_sql = "SELECT * from data_collection"
 
         db = connect(
@@ -43,15 +66,14 @@ class DCDetailsFetcher:
         return data_collection
 
     def fetch_samples_count(self, dc_id: int) -> int:
-        """Fetching samples count from the database
+        """Fetch the number of samples linked to a data collection.
 
         Args:
-            dc_id (int): Datacollection id
+            dc_id (int): Data collection identifier.
 
         Returns:
-            int: The sample count
+            int: Count of distinct samples associated to the given collection.
         """
-
         select_samples_count = """ SELECT count(samples.sample_id) AS num_samples
                         FROM (
                         SELECT DISTINCT sf.sample_id
@@ -75,15 +97,14 @@ class DCDetailsFetcher:
         return samples_count
 
     def fetch_population_count(self, dc_id: int) -> int:
-        """Fetch population count from the database
+        """Fetch the number of populations linked to a data collection.
 
         Args:
-            dc_id (int): Datacollection id
+            dc_id (int): Data collection identifier.
 
         Returns:
-            int: The population count
+            int: Count of distinct populations associated to the collection.
         """
-
         select_population_count = """ SELECT count(*) AS num_populations
                                 FROM (
                             SELECT DISTINCT dcsp.population_id
@@ -114,15 +135,15 @@ class DCDetailsFetcher:
         return population_count
 
     def fetch_publication_info(self, dc_id: int) -> list[tuple]:
-        """Fetches publication from the database for each datacollection id
+        """Fetch publication metadata for a data collection.
 
         Args:
-            dc_id (int): Datacollection id
+            dc_id (int): Data collection identifier.
 
         Returns:
-            list[tuple]: List of rows of information from the database
+            list[tuple]: Publication rows (non-null records only) for the
+                given data collection.
         """
-
         publication_info_sql = """Select * from publications where data_collection_id=%s and publication is NOT NULL"""
 
         db = connect(
@@ -142,13 +163,14 @@ class DCDetailsFetcher:
         return publication_info
 
     def fetch_analysis_information(self, dc_id) -> list[tuple]:
-        """Fetches Analysis group information from the database
+        """Fetch analysis group information for a data collection.
 
         Args:
-            dc_id (_type_): Data collection id
+            dc_id (_type_): Data collection identifier.
 
         Returns:
-            list[tuple]: List of rows of information from the database
+            list[tuple]: Tuples of (data_type_code, analysis_group_description)
+                summarising analysis coverage in the collection.
         """
         analysis_info_sql = """SELECT dt.code data_type, ag.description analysis_group
             FROM file f LEFT JOIN data_type dt ON f.data_type_id = dt.data_type_id
@@ -174,13 +196,18 @@ class DCDetailsFetcher:
         return analysis_info
 
     def populate_the_dictionary_structure(self, row: tuple) -> dict[str, Any]:
-        """Populating the dataCollection dictionary
+        """Build the data collection dictionary for indexing.
+
+        Pulls auxiliary counts, publications, and analysis details and merges
+        them into the base dictionary created by `create_the_dictionary_structure()`.
 
         Args:
-            row (tuple): The row containing info from the fetch_datacollections
+            row (tuple): A data collection row as returned by
+                `fetch_datacollections()`.
 
         Returns:
-            dict[str, Any]: Updated dictionary
+            dict[str, Any]: Fully populated dictionary representing a single
+                data collection, ready for indexing.
         """
         dc_data = create_the_dictionary_structure()
         dc_data.update(

@@ -1,15 +1,47 @@
+"""File details fetcher.
+
+Provides DB accessors to retrieve and assemble information needed to build
+`file` documents for Elasticsearch. This module encapsulates SQL queries
+and the shaping of results into a consistent dictionary structure suitable
+for indexing.
+
+All functionality is exposed via the `FetchFileFromDB` class.
+"""
+
+# ──────────────────────────────────────────────────────────────
+# Imports
+# ──────────────────────────────────────────────────────────────
+
 import mysql.connector
 from typing import Any
 from .utils import create_the_dictionary_structure
 from collections import defaultdict
 
 
+# ──────────────────────────────────────────────────────────────
+# Fetcher
+# ──────────────────────────────────────────────────────────────
+
 class FetchFileFromDB:
+    """Fetch file metadata and related entities from the database."""
+
     def __init__(self, db_config: dict):
+        """Initialise the fetcher.
+
+        Args:
+            db_config (dict): Database configuration containing keys:
+                "host", "port", "user", "password", "database".
+        """
         self.db_config = db_config
 
     # Fetch files for full indexing
     def fetch_files_for_create(self) -> list[tuple]:
+        """Fetch files for full (create) indexing.
+
+        Returns:
+            list[tuple]: Rows containing file metadata joined to data type
+            and analysis group for files that should be indexed.
+        """
         fetch_files_sql = """
         SELECT f.file_id, f.url, f.md5, dt.code, ag.description
         FROM file f
@@ -37,6 +69,12 @@ class FetchFileFromDB:
 
     # Fetch files for update of indexing
     def fetch_files_for_update(self) -> list[tuple]:
+        """Fetch files that are eligible for update indexing.
+
+        Returns:
+            list[tuple]: Rows for files that should be (re)indexed because
+            they are eligible but not yet marked as indexed in Elasticsearch.
+        """
         fetch_files_sql = """
         SELECT f.file_id, f.url, f.md5, dt.code, ag.description
         FROM file f
@@ -63,40 +101,50 @@ class FetchFileFromDB:
 
         return files
 
-    # Fetch files that are no longer foreign_file TRUE & in_current_tree TRUE but are still in index
-    # These files need to be deleted from the index
-    def fetch_files_to_delete_from_index(self) -> list[int]:
-        fetch_files_sql = """
-        SELECT f.file_id
-        FROM file f
-        WHERE (f.foreign_file IS NOT TRUE AND f.in_current_tree IS NOT TRUE)
-        AND (f.indexed_in_elasticsearch IS TRUE)
-        ORDER BY f.file_id
-        """
+    # # Fetch files that are no longer foreign_file TRUE & in_current_tree TRUE but are still in index
+    # # These files need to be deleted from the index
+    # def fetch_files_to_delete_from_index(self) -> list[int]:
+    #     """Fetch file IDs that should be deleted from the ES index.
 
-        db = mysql.connector.connect(
-            host=self.db_config["host"],
-            port=self.db_config["port"],
-            user=self.db_config["user"],
-            database=self.db_config["database"],
-            password=self.db_config["password"],
-        )
+    #     These are files that are no longer foreign or in the current tree,
+    #     but are marked as indexed in Elasticsearch.
 
-        cursor = db.cursor()
-        cursor.execute(fetch_files_sql)
-        files = [f[0] for f in cursor.fetchall()]
-        cursor.close()
-        db.close()
+    #     Returns:
+    #         list[int]: File IDs to delete from the Elasticsearch index.
+    #     """
+    #     fetch_files_sql = """
+    #     SELECT f.file_id
+    #     FROM file f
+    #     WHERE (f.foreign_file IS NOT TRUE AND f.in_current_tree IS NOT TRUE)
+    #     AND (f.indexed_in_elasticsearch IS TRUE)
+    #     ORDER BY f.file_id
+    #     """
 
-        return files
+    #     db = mysql.connector.connect(
+    #         host=self.db_config["host"],
+    #         port=self.db_config["port"],
+    #         user=self.db_config["user"],
+    #         database=self.db_config["database"],
+    #         password=self.db_config["password"],
+    #     )
+
+    #     cursor = db.cursor()
+    #     cursor.execute(fetch_files_sql)
+    #     files = [f[0] for f in cursor.fetchall()]
+    #     cursor.close()
+    #     db.close()
+
+    #     return files
 
     def update_elasticsearch_file(self) -> list[tuple]:
-        """Update the column set indexed_in_elasticsearch = 1 based on if foreign file/ in_current_tree is true
+        """Update the `indexed_in_elasticsearch` column.
+
+        Sets `indexed_in_elasticsearch = 1` for files where
+        `(foreign_file IS TRUE OR in_current_tree IS TRUE)`.
 
         Returns:
-            list[tuple]: A list of rows from the db
+            list[tuple]: A list of rows from the DB (not used here).
         """
-
         update_elasticsearch_sql = """
         UPDATE file SET indexed_in_elasticsearch = (foreign_file IS TRUE OR in_current_tree IS TRUE)
         """
@@ -116,13 +164,15 @@ class FetchFileFromDB:
         db.close()
 
     def preload_data(self, file_ids: list[int]) -> tuple[defaultdict, defaultdict]:
-        """Preload data to reduce the number of queries on the database
+        """Preload related data to reduce DB round-trips.
 
         Args:
-            file_ids (list[int]): List of file_id
+            file_ids (list[int]): List of file IDs to preload data for.
 
         Returns:
-            tuple[defaultdict, defaultdict]: Default dict
+            tuple[defaultdict, defaultdict]: Two mappings:
+                - dc_map[file_id] -> List[(data_collection_title, reuse_policy)]
+                - sp_map[file_id] -> List[(sample_name, population_description)]
         """
         format_strings = ",".join(["%s"] * len(file_ids))
 
@@ -170,15 +220,15 @@ class FetchFileFromDB:
     def populate_the_dictionary(
         self, row: tuple, dc_map: defaultdict, sp_map: defaultdict
     ) -> dict[str, Any]:
-        """Populate the file dictionary
+        """Build the file document structure for indexing.
 
         Args:
-            row (tuple): The row from the function fetch_file_from_db
-            dc_map (defaultdict): Containing data collection data with file id as the key
-            sp_map (defaultdict): Containing samples and population data with file as the key
+            row (tuple): Row returned by the file fetcher methods.
+            dc_map (defaultdict): Mapping of file_id to data-collection tuples.
+            sp_map (defaultdict): Mapping of file_id to (sample, population) tuples.
 
         Returns:
-            dict[str, Any]: Built file dictionary
+            dict[str, Any]: A fully-populated file document ready for indexing.
         """
         file_id = row[0]
         file_dict = create_the_dictionary_structure()

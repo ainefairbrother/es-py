@@ -1,3 +1,21 @@
+"""Data Collections indexer.
+
+Provides a CLI and programmatic API to build and (re)index the
+`data_collections` index in Elasticsearch from the IGSR database.
+
+This module:
+  * Reads ES settings/mappings from a local JSON file.
+  * Fetches data collections and transforms rows into ES documents.
+  * Creates or updates the ES index via bulk operations.
+
+The script uses Click for the CLI and is safe to import for use from
+other modules (see `run()`).
+"""
+
+# ──────────────────────────────────────────────────────────────
+# Imports
+# ──────────────────────────────────────────────────────────────
+
 import click
 from typing import Any
 import json
@@ -7,31 +25,48 @@ from index.config_read import read_from_config_file
 from elasticsearch.helpers import BulkIndexError
 
 
+# ──────────────────────────────────────────────────────────────
+# Constants
+# ──────────────────────────────────────────────────────────────
+
 json_file = "index/data_collection_index/data_collections.json"
 
 
+# ──────────────────────────────────────────────────────────────
+# Indexer
+# ──────────────────────────────────────────────────────────────
+
 class DataCollectionsIndexer:
-    """DataCollectionsIndexer class"""
+    """Index builder for data collections.
+
+    Constructs and executes bulk actions for the `data_collections` index,
+    using settings/mappings from disk and documents sourced from the DB.
+
+    Attributes:
+        type_of: Whether to 'create' the index (fresh) or 'update' it.
+        data: Database configuration loaded from the provided config file.
+        fetcher: Helper to fetch and shape rows from the database.
+        indexer: Elasticsearch helper targeting the `data_collections` index.
+    """
 
     def __init__(self, config_file: str, es_host: str, type_of: str):
-        """Initialization of the DataCollectionsIndexer
+        """Initialise the indexer.
 
         Args:
-            config_file (str): Configuration file
-            es_host (str): ElasticSearch Host
-            type_of (str): Type of: create or update
+            config_file: Path to the YAML/JSON configuration file.
+            es_host: Elasticsearch host to connect to.
+            type_of: Operation mode, either 'create' or 'update'.
         """
-
         self.type_of = type_of
         self.data = read_from_config_file(config_file)
         self.fetcher = DCDetailsFetcher(self.data)
         self.indexer = ElasticSearchIndexer(es_host, "data_collections")
 
     def load_json_file(self) -> dict[str, Any]:
-        """Loading Json file to get the settings and the mappings
+        """Load index settings and mappings.
 
         Returns:
-            dict[str, Any]: json data
+            A dict containing the JSON document with `settings` and `mappings`.
         """
         with open(json_file, "r") as file:
             data = json.load(file)
@@ -39,10 +74,10 @@ class DataCollectionsIndexer:
         return data
 
     def create_data_collections_index(self) -> bool:
-        """Create Analysis group index
+        """Create the `data_collections` index.
 
         Returns:
-            bool: True or False if index is created
+            True if the index was created successfully; otherwise False.
         """
         json_data = self.load_json_file()
         data_collection = self.indexer.create_index(
@@ -52,7 +87,14 @@ class DataCollectionsIndexer:
         return data_collection
 
     def build_and_index_datacollections(self):
-        """Build and index dataCollections"""
+        """Build and bulk-index all data collections.
+
+        Fetches rows from the database, converts them into ES actions, and
+        performs a bulk index. On 'create', the index is created beforehand.
+
+        Raises:
+            BulkIndexError: If the bulk indexing operation fails.
+        """
         actions = []
         data_collection = self.fetcher.fetch_datacollections()
         for row in data_collection:
@@ -75,6 +117,10 @@ class DataCollectionsIndexer:
                 click.echo(error)
 
 
+# ──────────────────────────────────────────────────────────────
+# CLI
+# ──────────────────────────────────────────────────────────────
+
 @click.command()
 @click.option(
     "--config_file",
@@ -88,6 +134,13 @@ class DataCollectionsIndexer:
     "--type_of", "-t", type=str, help="Update or create an index", required=True
 )
 def create_data(config_file: str, es_host: str, type_of: str):
+    """Create or update the `data_collections` index via CLI.
+
+    Args:
+        config_file: Path to the configuration file for DB/ES access.
+        es_host: Elasticsearch host.
+        type_of: Either 'create' for a fresh index or 'update' to reindex docs.
+    """
     dc_indexer = DataCollectionsIndexer(config_file, es_host, type_of)
     dc_indexer.build_and_index_datacollections()
 
@@ -96,7 +149,20 @@ if __name__ == "__main__":
     create_data()
 
 
-# Enables programmatic use (from main.py)
+# ──────────────────────────────────────────────────────────────
+# Programmatic API
+# ──────────────────────────────────────────────────────────────
+
 def run(config_file, es_host, type_of):
+    """Programmatic entry point for indexing.
+
+    This mirrors the CLI behaviour, allowing other modules to invoke
+    index creation or updates without spawning a subprocess.
+
+    Args:
+        config_file: Path to the configuration file.
+        es_host: Elasticsearch host.
+        type_of: 'create' or 'update'.
+    """
     indexer = DataCollectionsIndexer(config_file, es_host, type_of)
     result = indexer.build_and_index_datacollections()

@@ -1,3 +1,18 @@
+"""Superpopulation indexer.
+
+Provides a CLI and programmatic API to build and (re)index the
+`superpopulation` index in Elasticsearch from the IGSR database.
+
+This module:
+  * Reads ES settings/mappings from a local JSON file.
+  * Fetches superpopulation data and transforms rows into ES documents.
+  * Creates or updates the ES index via bulk operations.
+"""
+
+# ──────────────────────────────────────────────────────────────
+# Imports
+# ──────────────────────────────────────────────────────────────
+
 import click
 import json
 from typing import Any
@@ -5,31 +20,39 @@ from index.elasticsearch_indexer import ElasticSearchIndexer
 from .fetch_information_from_db import FetchSPFromDB
 from index.config_read import read_from_config_file
 
+
+# ──────────────────────────────────────────────────────────────
+# Constants
+# ──────────────────────────────────────────────────────────────
+
 json_file = "index/super_population_index/superpopulations_mappings.json"
 
 
+# ──────────────────────────────────────────────────────────────
+# Indexer
+# ──────────────────────────────────────────────────────────────
+
 class SuperPopulationIndexer:
-    """Class for the Superpopulation Indexer"""
+    """Indexer for the `superpopulation` index."""
 
     def __init__(self, config_file: str, es_host: str, type_of: str):
-        """Initializes the Superpopulation Indexer class
+        """Initialise the indexer.
 
         Args:
-            config_file (str): Configuration file
-            es_host (str): ElasticSearch Host
-            type_of (str): _description_
+            config_file (str): Path to configuration file.
+            es_host (str): Elasticsearch host.
+            type_of (str): Operation type, e.g. "create" or "update".
         """
-
         self.type_of = type_of
         self.data = read_from_config_file(config_file)
         self.fetcher = FetchSPFromDB(self.data)
         self.indexer = ElasticSearchIndexer(es_host, "superpopulation")
 
     def load_json_file(self) -> dict[str, Any]:
-        """Loading Json file to get the settings and the mappings
+        """Load index settings and mappings from JSON.
 
         Returns:
-            dict[str, Any]: json data
+            dict[str, Any]: Parsed JSON with "settings" and "mappings".
         """
         with open(json_file, "r") as file:
             data = json.load(file)
@@ -37,12 +60,11 @@ class SuperPopulationIndexer:
         return data
 
     def create_superpopulation_index(self) -> bool:
-        """Create Superpopulation index
+        """Create the `superpopulation` index.
 
         Returns:
-            bool: True or False if index is created
+            bool: True if the index was created successfully, otherwise False.
         """
-
         json_data = self.load_json_file()
         superpopulation = self.indexer.create_index(
             json_data["settings"], json_data["mappings"]
@@ -51,7 +73,7 @@ class SuperPopulationIndexer:
         return superpopulation
 
     def build_and_index_superpopulation(self):
-        """Builds and indexes the superpopulation index"""
+        """Build and bulk index superpopulation documents."""
         actions = []
         superpopulation = self.fetcher.fetch_information_from_db()
         for row in superpopulation:
@@ -69,6 +91,10 @@ class SuperPopulationIndexer:
             click.echo("Bulk indexing successful")
 
 
+# ──────────────────────────────────────────────────────────────
+# CLI
+# ──────────────────────────────────────────────────────────────
+
 @click.command()
 @click.option(
     "--config_file",
@@ -82,9 +108,20 @@ class SuperPopulationIndexer:
     "--type_of", "-t", type=str, help="Update or create an index", required=True
 )
 def create_data(config_file: str, es_host: str, type_of: str):
+    """CLI entry point to build and (re)index the superpopulation index.
+
+    Args:
+        config_file (str): Path to configuration file with DB credentials.
+        es_host (str): Elasticsearch host.
+        type_of (str): Operation type, e.g. "create" or "update".
+    """
     superpop_indexer = SuperPopulationIndexer(config_file, es_host, type_of)
     superpop_indexer.build_and_index_superpopulation()
 
+
+# ──────────────────────────────────────────────────────────────
+# Script entry
+# ──────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     create_data()
