@@ -26,7 +26,7 @@
           "display_order": {
             "type": "long"
           },
-          "code": {
+          "elastic_id": {
             "type": "text",
             "fields": {
               "keyword": {

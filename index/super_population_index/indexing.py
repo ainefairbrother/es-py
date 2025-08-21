@@ -55,9 +55,9 @@ class SuperPopulationIndexer:
         actions = []
         superpopulation = self.fetcher.fetch_information_from_db()
         for row in superpopulation:
-            code = row[0]
+            elastic_id = row[0]
             super_pop_data = self.fetcher.build_superpopulation_info(row)
-            action = self.indexer.index_data(super_pop_data, code, self.type_of)
+            action = self.indexer.index_data(super_pop_data, elastic_id, self.type_of)
             actions.append(action)
 
         if self.type_of == "create":

@@ -52,7 +52,7 @@ class FetchSPFromDB:
         superpopulation = create_the_dictionary_structure()
         superpopulation.update(
             {
-                "code": row[0],
+                "elastic_id": row[0],
                 "name": row[1],
                 "display_colour": row[2],
                 "display_order": row[3],
