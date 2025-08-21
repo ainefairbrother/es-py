@@ -1,137 +1,136 @@
 {
-    "settings": {
-      "number_of_shards": 1,
-      "number_of_replicas": 1,
-      "routing": {
-        "allocation": {
-          "include": {
-            "_tier_preference": "data_content"
-          }
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 1,
+    "routing": {
+      "allocation": {
+        "include": {
+          "_tier_preference": "data_content"
         }
       }
-    },
-    "mappings": {
-      "properties": {
-        "doc": {
-          "properties": {
-            "alignment": {
-              "type": "text",
-              "fields": {
-                "keyword": {
-                  "type": "keyword",
-                  "ignore_above": 256
-                }
+    }
+  },
+  "mappings": {
+    "properties": {
+      "doc": {
+        "properties": {
+          "alignment": {
+            "type": "text",
+            "fields": {
+              "keyword": {
+                "type": "keyword",
+                "ignore_above": 256
               }
-            },
-            "code": {
-              "type": "text",
-              "fields": {
-                "keyword": {
-                  "type": "keyword",
-                  "ignore_above": 256
-                }
+            }
+          },
+          "code": {
+            "type": "text",
+            "fields": {
+              "keyword": {
+                "type": "keyword",
+                "ignore_above": 256
               }
-            },
-            "dataReusePolicy": {
-              "type": "text",
-              "fields": {
-                "keyword": {
-                  "type": "keyword",
-                  "ignore_above": 256
-                }
+            }
+          },
+          "dataReusePolicy": {
+            "type": "text",
+            "fields": {
+              "keyword": {
+                "type": "keyword",
+                "ignore_above": 256
               }
-            },
-            "dataTypes": {
-              "type": "text",
-              "fields": {
-                "keyword": {
-                  "type": "keyword",
-                  "ignore_above": 256
-                }
+            }
+          },
+          "dataTypes": {
+            "type": "text",
+            "fields": {
+              "keyword": {
+                "type": "keyword",
+                "ignore_above": 256
               }
-            },
-            "populations": {
-              "properties": {
-                "count": {
-                  "type": "long"
-                }
+            }
+          },
+          "populations": {
+            "properties": {
+              "count": {
+                "type": "long"
               }
-            },
-            "publications": {
-              "properties": {
-                "displayOrder": {
-                  "type": "long"
-                },
-                "name": {
-                  "type": "text",
-                  "fields": {
-                    "keyword": {
-                      "type": "keyword",
-                      "ignore_above": 256
-                    }
-                  }
-                },
-                "url": {
-                  "type": "text",
-                  "fields": {
-                    "keyword": {
-                      "type": "keyword",
-                      "ignore_above": 256
-                    }
+            }
+          },
+          "publications": {
+            "properties": {
+              "displayOrder": {
+                "type": "long"
+              },
+              "name": {
+                "type": "text",
+                "fields": {
+                  "keyword": {
+                    "type": "keyword",
+                    "ignore_above": 256
                   }
                 }
-              }
-            },
-            "samples": {
-              "properties": {
-                "count": {
-                  "type": "long"
+              },
+              "url": {
+                "type": "text",
+                "fields": {
+                  "keyword": {
+                    "type": "keyword",
+                    "ignore_above": 256
+                  }
                 }
               }
-            },
-            "sequence": {
-              "type": "text",
-              "fields": {
-                "keyword": {
-                  "type": "keyword",
-                  "ignore_above": 256
-                }
+            }
+          },
+          "samples": {
+            "properties": {
+              "count": {
+                "type": "long"
               }
-            },
-            "shortTitle": {
-              "type": "text",
-              "fields": {
-                "keyword": {
-                  "type": "keyword",
-                  "ignore_above": 256
-                }
+            }
+          },
+          "sequence": {
+            "type": "text",
+            "fields": {
+              "keyword": {
+                "type": "keyword",
+                "ignore_above": 256
               }
-            },
-            "title": {
-              "type": "text",
-              "fields": {
-                "keyword": {
-                  "type": "keyword",
-                  "ignore_above": 256
-                }
+            }
+          },
+          "shortTitle": {
+            "type": "text",
+            "fields": {
+              "keyword": {
+                "type": "keyword",
+                "ignore_above": 256
               }
-            },
-            "variants": {
-              "type": "text",
-              "fields": {
-                "keyword": {
-                  "type": "keyword",
-                  "ignore_above": 256
-                }
+            }
+          },
+          "title": {
+            "type": "text",
+            "fields": {
+              "keyword": {
+                "type": "keyword",
+                "ignore_above": 256
               }
-            },
-            "website": {
-              "type": "text",
-              "fields": {
-                "keyword": {
-                  "type": "keyword",
-                  "ignore_above": 256
-                }
+            }
+          },
+          "variants": {
+            "type": "text",
+            "fields": {
+              "keyword": {
+                "type": "keyword",
+                "ignore_above": 256
+              }
+            }
+          },
+          "website": {
+            "type": "text",
+            "fields": {
+              "keyword": {
+                "type": "keyword",
+                "ignore_above": 256
               }
             }
           }
@@ -139,4 +138,4 @@
       }
     }
   }
-  
+}

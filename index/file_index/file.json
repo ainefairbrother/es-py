@@ -1,89 +1,88 @@
 {
-    "settings": {
-      "number_of_shards": 2,
-      "number_of_replicas": 1,
-      "routing": {
-        "allocation": {
-          "include": {
-            "_tier_preference": "data_content"
-          }
+  "settings": {
+    "number_of_shards": 2,
+    "number_of_replicas": 1,
+    "routing": {
+      "allocation": {
+        "include": {
+          "_tier_preference": "data_content"
         }
       }
-    },
-    "mappings": {
-      "properties": {
-        "doc": {
-          "properties": {
-            "analysisGroup": {
-              "type": "text",
-              "fields": {
-                "keyword": {
-                  "type": "keyword",
-                  "ignore_above": 256
-                }
+    }
+  },
+  "mappings": {
+    "properties": {
+      "doc": {
+        "properties": {
+          "analysisGroup": {
+            "type": "text",
+            "fields": {
+              "keyword": {
+                "type": "keyword",
+                "ignore_above": 256
               }
-            },
-            "dataCollections": {
-              "type": "text",
-              "fields": {
-                "keyword": {
-                  "type": "keyword",
-                  "ignore_above": 256
-                }
+            }
+          },
+          "dataCollections": {
+            "type": "text",
+            "fields": {
+              "keyword": {
+                "type": "keyword",
+                "ignore_above": 256
               }
-            },
-            "dataReusePolicy": {
-              "type": "text",
-              "fields": {
-                "keyword": {
-                  "type": "keyword",
-                  "ignore_above": 256
-                }
+            }
+          },
+          "dataReusePolicy": {
+            "type": "text",
+            "fields": {
+              "keyword": {
+                "type": "keyword",
+                "ignore_above": 256
               }
-            },
-            "dataType": {
-              "type": "text",
-              "fields": {
-                "keyword": {
-                  "type": "keyword",
-                  "ignore_above": 256
-                }
+            }
+          },
+          "dataType": {
+            "type": "text",
+            "fields": {
+              "keyword": {
+                "type": "keyword",
+                "ignore_above": 256
               }
-            },
-            "md5": {
-              "type": "text",
-              "fields": {
-                "keyword": {
-                  "type": "keyword",
-                  "ignore_above": 256
-                }
+            }
+          },
+          "md5": {
+            "type": "text",
+            "fields": {
+              "keyword": {
+                "type": "keyword",
+                "ignore_above": 256
               }
-            },
-            "populations": {
-              "type": "text",
-              "fields": {
-                "keyword": {
-                  "type": "keyword",
-                  "ignore_above": 256
-                }
+            }
+          },
+          "populations": {
+            "type": "text",
+            "fields": {
+              "keyword": {
+                "type": "keyword",
+                "ignore_above": 256
               }
-            },
-            "samples": {
-              "type": "text",
-              "fields": {
-                "keyword": {
-                  "type": "keyword",
-                  "ignore_above": 256
-                }
+            }
+          },
+          "samples": {
+            "type": "text",
+            "fields": {
+              "keyword": {
+                "type": "keyword",
+                "ignore_above": 256
               }
-            },
-            "url": {
-              "type": "text",
-              "fields": {
-                "keyword": {
-                  "type": "keyword",
-                  "ignore_above": 256
-                }
+            }
+          },
+          "url": {
+            "type": "text",
+            "fields": {
+              "keyword": {
+                "type": "keyword",
+                "ignore_above": 256
               }
             }
           }
@@ -91,4 +90,4 @@
       }
     }
   }
-  
+}

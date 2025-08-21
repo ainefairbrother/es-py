@@ -156,11 +156,15 @@
             "properties": {
               "relatedSampleName": {
                 "type": "text",
-                "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } }
+                "fields": {
+                  "keyword": { "type": "keyword", "ignore_above": 256 }
+                }
               },
               "relationship": {
                 "type": "text",
-                "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } }
+                "fields": {
+                  "keyword": { "type": "keyword", "ignore_above": 256 }
+                }
               }
             }
           },
