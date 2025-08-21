@@ -2,7 +2,7 @@ import click
 from typing import Any
 import json
 from index.elasticsearch_indexer import ElasticSearchIndexer
-from .fetch_ag_from_db import FetchAGFromDB
+from .fetch_information_from_db import FetchAGFromDB
 from index.config_read import read_from_config_file
 
 

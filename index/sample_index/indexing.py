@@ -3,7 +3,7 @@ import sys
 import json
 from typing import Any
 from index.elasticsearch_indexer import ElasticSearchIndexer
-from .fetch_samples_from_db import SampleDetailsFetcher
+from .fetch_information_from_db import SampleDetailsFetcher
 from index.config_read import read_from_config_file
 
 json_file = "index/sample_index/sample.json"
