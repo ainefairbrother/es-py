@@ -19,6 +19,7 @@ other modules.
 import click
 import json
 from typing import Any
+from elasticsearch.helpers import BulkIndexError
 from index.elasticsearch_indexer import ElasticSearchIndexer
 from .fetch_information_from_db import FetchFileFromDB
 from index.config_read import read_from_config_file
@@ -120,18 +121,38 @@ class FileIndexer:
             yield self.indexer.index_data(files_data, padded_id, self.type_of)
 
     def build_and_index_file_info(self):
-        """Build and bulk index file documents."""
-        if self.type_of == "create":
-            rows = self.fetcher.fetch_files_for_create()
-            actions = self.generate_actions(rows)
-            if self.create_file_index() is True:
+        """Build and bulk-index all eligible files.
+
+        Fetches rows from the database, converts them into ES actions, and
+        performs a bulk index. On 'create', the index is created beforehand.
+
+        Raises:
+            BulkIndexError: If the bulk indexing operation fails.
+        """
+        rows = self.fetcher.fetch_files()
+        if not rows:
+            click.echo("No file documents eligible for indexing — nothing to do.")
+            return
+
+        click.echo(f"Preparing {len(rows)} file document(s) to index...")
+        actions = list(self.generate_actions(rows))
+
+        try:
+            if self.type_of == "create":
+                if self.create_file_index() is True:
+                    self.indexer.bulk_index(actions)
+                    click.echo("Bulk indexing successful")
+                else:
+                    # Index already exists or was not created; still attempt bulk
+                    self.indexer.bulk_index(actions)
+                    click.echo("Index existed; bulk indexing successful")
+            else:
                 self.indexer.bulk_index(actions)
                 click.echo("Bulk indexing successful")
-        else:
-            rows = self.fetcher.fetch_files_for_update()
-            actions = self.generate_actions(rows)
-            self.indexer.bulk_index(actions)
-            click.echo("Bulk indexing successful")
+        except BulkIndexError as e:
+            click.echo("Bulk indexing failed")
+            for error in e.errors:
+                click.echo(error)
 
 
 # ──────────────────────────────────────────────────────────────
