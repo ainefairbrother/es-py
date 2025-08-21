@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import MagicMock
-from index.sample_index.fetch_samples_from_db import SampleDetailsFetcher
+from index.sample_index.fetch_information_from_db import SampleDetailsFetcher
 from typing import Any
 from pytest_mock import MockerFixture
 
