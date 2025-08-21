@@ -3,13 +3,14 @@ from collections import defaultdict
 from typing import Any, Dict, List, Tuple
 from .utils import create_the_dictionary_structure
 
+
 class PopulationDetailsFetcher:
     def __init__(self, db_config: dict[str, Any]):
         """Initializing the population details fetcher
 
         Args:
             db_config (dict): DB configuration dictionary
-        """        
+        """
         self.db_config = db_config
 
     def fetch_population(self) -> List[Tuple]:
@@ -17,7 +18,7 @@ class PopulationDetailsFetcher:
 
         Returns:
             List[Tuple]: List of rows containing the population information
-        """        
+        """
         query = """
             SELECT p.code, p.name, p.description, p.latitude, p.longitude, p.elastic_id, p.display_order,
                    COUNT(DISTINCT sample_id) AS num_samples, sp.code, sp.name, sp.display_colour, 
@@ -70,7 +71,7 @@ class PopulationDetailsFetcher:
 
         Returns:
             Dict[int, List[Tuple]]: A dictionary containing the key and the list of rows from the db
-        """        
+        """
         if not pop_ids:
             return {}
 
@@ -118,7 +119,7 @@ class PopulationDetailsFetcher:
 
         Returns:
             Dict[int, List[Dict[str, Any]]]: A dictionary containing the key and the list of rows from the db
-        """        
+        """
         if not pop_ids:
             return {}
 
@@ -170,7 +171,7 @@ class PopulationDetailsFetcher:
 
         Returns:
             Dict[str, Any]: Population doc
-        """        
+        """
         pop_id = row[12]
 
         population_info = {
@@ -181,7 +182,7 @@ class PopulationDetailsFetcher:
             "longitude": float(row[4]),
             "elasticId": row[5],
             "display_order": row[6],
-            "samples": {"count" : row[7]},
+            "samples": {"count": row[7]},
             "superpopulation": {
                 "code": row[8],
                 "name": row[9],
@@ -189,9 +190,9 @@ class PopulationDetailsFetcher:
                 "display_order": row[11],
             },
             "dataCollections": [],
-            "overlappingPopulations": []
+            "overlappingPopulations": [],
         }
-        
+
         # ---------- dataCollections ----------
         # tuples: (dt.code, ag.description, dc.title, dc_id, dc.reuse_policy)
         dc_rows = data_collection_map.get(pop_id, [])
@@ -201,13 +202,16 @@ class PopulationDetailsFetcher:
             if not dc_id or not dc_title or not dtype:
                 # skip incomplete rows and NULL dtype (prevents "null" key)
                 continue
-            agg = per_dc.setdefault(dc_id, {
-                "title": dc_title,
-                "dataReusePolicy": reuse_policy,
-                "sequence": set(),
-                "alignment": set(),
-                "variants": set(),
-            })
+            agg = per_dc.setdefault(
+                dc_id,
+                {
+                    "title": dc_title,
+                    "dataReusePolicy": reuse_policy,
+                    "sequence": set(),
+                    "alignment": set(),
+                    "variants": set(),
+                },
+            )
             if ag_desc and dtype in ("sequence", "alignment", "variants"):
                 agg[dtype].add(ag_desc)
 
@@ -233,22 +237,30 @@ class PopulationDetailsFetcher:
         for _src, ov_elastic_id, ov_desc, sample_name in ov_rows:
             if not ov_elastic_id:
                 continue
-            agg = by_overlap.setdefault(ov_elastic_id, {
-                "populationElasticId": ov_elastic_id,
-                "populationDescription": ov_desc,
-                "sharedSamples": set(),
-            })
+            agg = by_overlap.setdefault(
+                ov_elastic_id,
+                {
+                    "populationElasticId": ov_elastic_id,
+                    "populationDescription": ov_desc,
+                    "sharedSamples": set(),
+                },
+            )
             if sample_name:
                 agg["sharedSamples"].add(sample_name)
 
-        for k in sorted(by_overlap, key=lambda kk: (by_overlap[kk]["populationDescription"] or "", kk)):
+        for k in sorted(
+            by_overlap,
+            key=lambda kk: (by_overlap[kk]["populationDescription"] or "", kk),
+        ):
             b = by_overlap[k]
             samples = sorted(b["sharedSamples"])
-            population_info["overlappingPopulations"].append({
-                "populationElasticId": b["populationElasticId"],
-                "populationDescription": b["populationDescription"],
-                "sharedSamples": samples,
-                "sharedSampleCount": len(samples),
-            })
+            population_info["overlappingPopulations"].append(
+                {
+                    "populationElasticId": b["populationElasticId"],
+                    "populationDescription": b["populationDescription"],
+                    "sharedSamples": samples,
+                    "sharedSampleCount": len(samples),
+                }
+            )
 
         return population_info

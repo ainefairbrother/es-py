@@ -18,6 +18,7 @@ from index.population_index.utils import create_the_dictionary_structure
 
 # ───────────────────────── Fixtures ──────────────────────────
 
+
 @pytest.fixture
 def db_config() -> dict[str, Any]:
     return {
@@ -38,7 +39,9 @@ def fetcher(db_config: dict[str, Any]) -> PopulationDetailsFetcher:
 def blank_doc() -> dict[str, Any]:
     return create_the_dictionary_structure()
 
+
 # ────────────────────────── Tests ────────────────────────────
+
 
 def _patch_mysql(mocker: MockerFixture, rows):
     """Patch mysql.connector.connect so cursor.fetchall() yields *rows*.
@@ -62,12 +65,22 @@ def test_fetch_population(mocker: MockerFixture, fetcher: PopulationDetailsFetch
         mocker (MockerFixture): pytest-mocker fixture for patching.
         fetcher (PopulationDetailsFetcher): Instance under test.
     """
-    
+
     rows = [
         (
-            "code1", "name1", "desc",
-            1.0, 2.0, "eid", 1, 5,
-            "spcode", "spname", "#fff", 2, 1
+            "code1",
+            "name1",
+            "desc",
+            1.0,
+            2.0,
+            "eid",
+            1,
+            5,
+            "spcode",
+            "spname",
+            "#fff",
+            2,
+            1,
         )
     ]
     _patch_mysql(mocker, rows)
@@ -77,46 +90,62 @@ def test_fetch_population(mocker: MockerFixture, fetcher: PopulationDetailsFetch
     assert result[0][0] == "code1"
 
 
-def test_fetch_data_collection_details(mocker: MockerFixture, fetcher: PopulationDetailsFetcher):
+def test_fetch_data_collection_details(
+    mocker: MockerFixture, fetcher: PopulationDetailsFetcher
+):
     """Test fetch_data_collection_details groups rows by population ID.
 
     Args:
         mocker (MockerFixture): pytest-mocker fixture for patching.
         fetcher (PopulationDetailsFetcher): Instance under test.
     """
-    
+
     # method returns {pop_id: [tuple, ...]}
     rows = [(1, "type1", "group1", "title1", 123, "open")]
     _patch_mysql(mocker, rows)
 
     res = fetcher.fetch_data_collection_details([1])
     assert 1 in res
-    assert res[1][0][0] == "type1"           # dt.code
-    assert res[1][0][2] == "title1"          # dc.title
+    assert res[1][0][0] == "type1"  # dt.code
+    assert res[1][0][2] == "title1"  # dc.title
 
 
-def test_build_population_info(mocker: MockerFixture, fetcher: PopulationDetailsFetcher):
+def test_build_population_info(
+    mocker: MockerFixture, fetcher: PopulationDetailsFetcher
+):
     """Test build_population_info assembles a full population document.
 
     Args:
         mocker (MockerFixture): pytest-mocker fixture for patching.
         fetcher (PopulationDetailsFetcher): Instance under test.
     """
-    
-def test_build_population_info(mocker: MockerFixture, fetcher: PopulationDetailsFetcher):
+
+
+def test_build_population_info(
+    mocker: MockerFixture, fetcher: PopulationDetailsFetcher
+):
     row = (
-        "code", "name", "desc", 1.1, 2.2, "eid",
-        0, 10, "spcode", "spname", "#000", 3, 123
+        "code",
+        "name",
+        "desc",
+        1.1,
+        2.2,
+        "eid",
+        0,
+        10,
+        "spcode",
+        "spname",
+        "#000",
+        3,
+        123,
     )
 
-    dc_map = {
-        123: [("sequence", "grp", "Human Genome", 999, "reuse")]
-    }
-    overlap_map = {
-        123: [(123, "popEL", "Overlap desc", "sharedSample1")]
-    }
+    dc_map = {123: [("sequence", "grp", "Human Genome", 999, "reuse")]}
+    overlap_map = {123: [(123, "popEL", "Overlap desc", "sharedSample1")]}
     mocker.patch.object(fetcher, "fetch_data_collection_details", return_value=dc_map)
-    mocker.patch.object(fetcher, "fetch_overlap_population_details", return_value=overlap_map)
+    mocker.patch.object(
+        fetcher, "fetch_overlap_population_details", return_value=overlap_map
+    )
 
     pop_doc = fetcher.build_population_info(row, dc_map, overlap_map)
 
@@ -131,14 +160,17 @@ def test_build_population_info(mocker: MockerFixture, fetcher: PopulationDetails
     # overlappingPopulations is a list, each with its own sharedSampleCount
     assert pop_doc["overlappingPopulations"][0]["sharedSampleCount"] == 1
 
-def test_fetch_overlap_population_details(mocker: MockerFixture, fetcher: PopulationDetailsFetcher):
+
+def test_fetch_overlap_population_details(
+    mocker: MockerFixture, fetcher: PopulationDetailsFetcher
+):
     """Test fetch_overlap_population_details returns overlaps keyed by ID.
 
     Args:
         mocker (MockerFixture): pytest-mocker fixture for patching.
         fetcher (PopulationDetailsFetcher): Instance under test.
     """
-    
+
     rows = [
         (
             1,

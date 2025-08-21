@@ -7,6 +7,8 @@ from .fetch_information_from_db import FetchFileFromDB
 from index.config_read import read_from_config_file
 
 json_file = "index/file_index/file.json"
+
+
 class FileIndexer:
     """FileIndexer class"""
 
@@ -25,7 +27,6 @@ class FileIndexer:
         self._fetcher = None
         self._indexer = None
 
-
     @property
     def data(self):
         """Property function for data
@@ -38,7 +39,6 @@ class FileIndexer:
 
         return self._data
 
-
     @property
     def fetcher(self):
         """Property function of fetcher
@@ -50,7 +50,6 @@ class FileIndexer:
             self._fetcher = FetchFileFromDB(self.data)
         return self._fetcher
 
-
     @property
     def indexer(self):
         """Property function of indexer
@@ -61,8 +60,7 @@ class FileIndexer:
         if self._indexer is None:
             self._indexer = ElasticSearchIndexer(self.es_host, "file")
         return self._indexer
-    
-    
+
     def load_json_file(self) -> dict[str, Any]:
         """Loading Json file to get the settings and the mappings
 
@@ -74,7 +72,6 @@ class FileIndexer:
 
         return data
 
-
     def create_file_index(self) -> bool:
         """Create Sample index
 
@@ -82,12 +79,9 @@ class FileIndexer:
             bool: True or False if index is created
         """
         json_data = self.load_json_file()
-        file = self.indexer.create_index(
-            json_data["settings"], json_data["mappings"]
-        )
+        file = self.indexer.create_index(json_data["settings"], json_data["mappings"])
 
         return file
-
 
     def generate_actions(self, rows):
         """Generate actions that will be used for bulk index
@@ -97,12 +91,11 @@ class FileIndexer:
         """
         file_ids = [int(r[0]) for r in rows]
         dc_data, sp_data = self.fetcher.preload_data(file_ids)
-        
+
         for row in rows:
-            padded_id = f"{int(row[0]):09d}" # match legacy ES v1.5 IDs - 9 digits, left padded like 000000057
+            padded_id = f"{int(row[0]):09d}"  # match legacy ES v1.5 IDs - 9 digits, left padded like 000000057
             files_data = self.fetcher.populate_the_dictionary(row, dc_data, sp_data)
             yield self.indexer.index_data(files_data, padded_id, self.type_of)
-
 
     def build_and_index_file_info(self):
         """Bulk index for the file
@@ -110,14 +103,14 @@ class FileIndexer:
         Returns:
             _type_: Bullk indexed
         """
-        
+
         if self.type_of == "create":
             rows = self.fetcher.fetch_files_for_create()
             actions = self.generate_actions(rows)
             if self.create_file_index() is True:
                 self.indexer.bulk_index(actions)
-                
-                ## to mirror Perl ES indexer functionality and turn on update_elasticsearch_file 
+
+                ## to mirror Perl ES indexer functionality and turn on update_elasticsearch_file
                 ## this flips the flag indexed_in_elasticsearch = 1/0
                 ## can turn this on in production
                 # self.fetcher.update_elasticsearch_file()
@@ -131,11 +124,11 @@ class FileIndexer:
             # ids_to_delete_rows = self.fetcher.fetch_files_to_delete_from_index()
             # ids_to_delete = [int(t[0]) for t in ids_to_delete_rows]
             # del_actions = (self.indexer.delete_data(f"{fid:09d}") for fid in ids_to_delete)
-            
+
             self.indexer.bulk_index(index_actions)
             # self.indexer.bulk_index(del_actions)
 
-            ## to mirror Perl ES indexer functionality and turn on update_elasticsearch_file 
+            ## to mirror Perl ES indexer functionality and turn on update_elasticsearch_file
             ## this flips the flag indexed_in_elasticsearch = 1/0
             ## can turn this on in production
             # self.fetcher.update_elasticsearch_file()
@@ -151,9 +144,9 @@ class FileIndexer:
     required=True,
 )
 @click.option("--es_host", "-es", type=str, help="ElasticSearch host", required=True)
-@click.option("--type_of", "-t", type=str, help="Update or create an index", required=True)
-
-
+@click.option(
+    "--type_of", "-t", type=str, help="Update or create an index", required=True
+)
 def create_data(config_file: str, es_host: str, type_of: str):
     """_summary_
 

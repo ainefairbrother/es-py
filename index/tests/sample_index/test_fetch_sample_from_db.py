@@ -6,8 +6,9 @@ from pytest_mock import MockerFixture
 
 # ───────────────────────── Fixtures ──────────────────────────
 
+
 @pytest.fixture
-def db_config()-> dict[str, Any]:
+def db_config() -> dict[str, Any]:
     """DB configuration for tests."""
     return {
         "host": "localhost",
@@ -17,12 +18,15 @@ def db_config()-> dict[str, Any]:
         "database": "test_db",
     }
 
+
 @pytest.fixture
 def fetcher(db_config: dict[str, Any]) -> SampleDetailsFetcher:
     """Fetcher instance under test."""
     return SampleDetailsFetcher(db_config)
 
+
 # ────────────────────────── Helpers ──────────────────────────
+
 
 def _patch_conn(mocker: MockerFixture, fetcher: SampleDetailsFetcher, rows):
     """
@@ -35,7 +39,9 @@ def _patch_conn(mocker: MockerFixture, fetcher: SampleDetailsFetcher, rows):
     mocker.patch.object(fetcher, "_get_conn", return_value=mock_db)
     return mock_db
 
+
 # ────────────────────────── Tests ────────────────────────────
+
 
 def test_fetch_samples(mocker: MockerFixture, fetcher: SampleDetailsFetcher):
     """fetch_samples returns expected rows."""
@@ -66,29 +72,31 @@ def test_preload_populations(mocker: MockerFixture, fetcher: SampleDetailsFetche
     # (sample_id,
     #  population_id, code, name, desc, lat, lng, elastic_id,
     #  superpop_id, superpop_code, superpop_name, superpop_display_colour, superpop_display_order)
-    rows = [(
-        1,              # sample_id
-        123,            # population_id
-        "GBR",          # code
-        "Great Britian",
-        "Britain",
-        "Britain, Scotland and Ireland",
-        None,           # lng
-        None,           # elastic_id
-        "BR",           # superpop_id (note: just matching test shape)
-        2,              # superpop_code
-        "SUPERGBR",     # superpop_name
-        "Super GBR",    # display_colour
-        None,           # display_order
-    )]
+    rows = [
+        (
+            1,  # sample_id
+            123,  # population_id
+            "GBR",  # code
+            "Great Britian",
+            "Britain",
+            "Britain, Scotland and Ireland",
+            None,  # lng
+            None,  # elastic_id
+            "BR",  # superpop_id (note: just matching test shape)
+            2,  # superpop_code
+            "SUPERGBR",  # superpop_name
+            "Super GBR",  # display_colour
+            None,  # display_order
+        )
+    ]
     _patch_conn(mocker, fetcher, rows)
 
     res_map = fetcher.preload_populations([1])
     assert 1 in res_map
     tup = res_map[1][0]  # this is row[1:] from above (no sample_id)
     # Matches the original assertions against legacy fetch_population_samples()
-    assert tup[1] == "GBR"     # code
-    assert tup[6] is None      # elastic_id
+    assert tup[1] == "GBR"  # code
+    assert tup[6] is None  # elastic_id
 
 
 def test_preload_datacollections(mocker: MockerFixture, fetcher: SampleDetailsFetcher):

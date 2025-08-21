@@ -106,7 +106,9 @@ class SampleDetailsFetcher:
             cur.execute(sql, batch)
             for row in cur.fetchall():
                 sid = row[0]
-                out.setdefault(sid, []).append(row[1:])  # drop sid to match old builder offsets
+                out.setdefault(sid, []).append(
+                    row[1:]
+                )  # drop sid to match old builder offsets
             cur.close()
         return out
 
@@ -136,7 +138,9 @@ class SampleDetailsFetcher:
             cur.execute(sql, batch)
             for row in cur.fetchall():
                 sid = row[0]
-                out.setdefault(sid, []).append(row[1:])  # drop sid to reuse same builder
+                out.setdefault(sid, []).append(
+                    row[1:]
+                )  # drop sid to reuse same builder
             cur.close()
         return out
 
@@ -183,7 +187,10 @@ class SampleDetailsFetcher:
     @staticmethod
     def _build_sources(rows: list[tuple]) -> list[dict[str, Any]]:
         out, seen = [], set()
-        for _sid, name, desc, url in ((None, r[2], r[3], r[4]) if len(r) == 5 else (None, r[1], r[2], r[3]) for r in rows):
+        for _sid, name, desc, url in (
+            (None, r[2], r[3], r[4]) if len(r) == 5 else (None, r[1], r[2], r[3])
+            for r in rows
+        ):
             key = (url, name, desc)
             if key in seen:
                 continue
@@ -203,14 +210,16 @@ class SampleDetailsFetcher:
             if key in seen:
                 continue
             seen.add(key)
-            out.append({
-                "elasticId": elastic_id,
-                "superpopulationName": sp_name,
-                "name": name,
-                "superpopulationCode": sp_code,
-                "description": desc,
-                "code": code,
-            })
+            out.append(
+                {
+                    "elasticId": elastic_id,
+                    "superpopulationName": sp_name,
+                    "name": name,
+                    "superpopulationCode": sp_code,
+                    "description": desc,
+                    "code": code,
+                }
+            )
         return out
 
     @staticmethod
@@ -279,13 +288,31 @@ class SampleDetailsFetcher:
         sample_id, name, biosample_id, sex = row[0], row[1], row[2], row[3]
 
         # fall back to per-sample fetch if maps not provided
-        src_rows = sources_map.get(sample_id, []) if sources_map is not None else [
-            (None, *r) for r in self.fetch_source_samples(sample_id)
-        ]
-        pop_rows = populations_map.get(sample_id, []) if populations_map is not None else self.fetch_population_samples(sample_id)
-        dc_rows  = dcs_map.get(sample_id, []) if dcs_map is not None else self.fetch_dataCollections_samples(sample_id)
-        rel_rows = rels_map.get(sample_id, []) if rels_map is not None else self.fetch_relationship_samples(sample_id)
-        syn_rows = syns_map.get(sample_id, []) if syns_map is not None else [r[0] for r in self.fetch_sample_synonyms_sql(sample_id)]
+        src_rows = (
+            sources_map.get(sample_id, [])
+            if sources_map is not None
+            else [(None, *r) for r in self.fetch_source_samples(sample_id)]
+        )
+        pop_rows = (
+            populations_map.get(sample_id, [])
+            if populations_map is not None
+            else self.fetch_population_samples(sample_id)
+        )
+        dc_rows = (
+            dcs_map.get(sample_id, [])
+            if dcs_map is not None
+            else self.fetch_dataCollections_samples(sample_id)
+        )
+        rel_rows = (
+            rels_map.get(sample_id, [])
+            if rels_map is not None
+            else self.fetch_relationship_samples(sample_id)
+        )
+        syn_rows = (
+            syns_map.get(sample_id, [])
+            if syns_map is not None
+            else [r[0] for r in self.fetch_sample_synonyms_sql(sample_id)]
+        )
 
         doc = create_the_dictionary_structure()
         doc.update(

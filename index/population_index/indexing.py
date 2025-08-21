@@ -59,8 +59,10 @@ class PopulationIndexer:
             code = row[5]
             if not code:
                 continue
-            
-            population_data = self.fetcher.build_population_info(row, dc_map, overlap_map)
+
+            population_data = self.fetcher.build_population_info(
+                row, dc_map, overlap_map
+            )
 
             action = self.indexer.index_data(population_data, code, self.type_of)
             actions.append(action)
@@ -68,9 +70,7 @@ class PopulationIndexer:
         if self.type_of == "create":
             if self.create_population_index() is True:
                 self.indexer.bulk_index(actions)
-                click.echo(
-                    f"Bulk indexing successful"
-                )
+                click.echo(f"Bulk indexing successful")
         else:
             self.indexer.bulk_index(actions)
             click.echo(f"Bulk indexing successful")

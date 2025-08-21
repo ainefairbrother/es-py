@@ -203,9 +203,9 @@ class DCDetailsFetcher:
             )
 
         for dtype, ag_desc in self.fetch_analysis_information(row[0]):
-            if not dtype: # skip empty/None dtype
+            if not dtype:  # skip empty/None dtype
                 continue
-            if ag_desc is None: # skip empty analysis_group names
+            if ag_desc is None:  # skip empty analysis_group names
                 continue
             dc_data.setdefault(dtype, [])
             if ag_desc not in dc_data[dtype]:

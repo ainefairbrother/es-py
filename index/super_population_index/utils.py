@@ -1,5 +1,6 @@
 from typing import Any
 
+
 def create_the_dictionary_structure() -> dict[str, Any]:
     """Create the dictionary structure
 

@@ -7,8 +7,10 @@ from .fetch_samples_from_db import SampleDetailsFetcher
 from index.config_read import read_from_config_file
 
 json_file = "index/sample_index/sample.json"
+
+
 class SampleIndexer:
-    """SampleIndexer Class """
+    """SampleIndexer Class"""
 
     def __init__(self, config_file: str, es_host: str, type_of: str):
         """Initializing of the Sample Indexer class
@@ -58,7 +60,7 @@ class SampleIndexer:
         if self._indexer is None:
             self._indexer = ElasticSearchIndexer(self.es_host, "sample")
         return self._indexer
-    
+
     def load_json_file(self) -> dict[str, Any]:
         """Loading Json file to get the settings and the mappings
 
@@ -77,9 +79,7 @@ class SampleIndexer:
             bool: True or False if index is created
         """
         json_data = self.load_json_file()
-        sample = self.indexer.create_index(
-            json_data["settings"], json_data["mappings"]
-        )
+        sample = self.indexer.create_index(json_data["settings"], json_data["mappings"])
 
         return sample
 
@@ -90,10 +90,10 @@ class SampleIndexer:
 
         # preload all dependent data once to avoid N+1 queries
         sources_map = self.fetcher.preload_sources(sample_ids)
-        pops_map    = self.fetcher.preload_populations(sample_ids)
-        dcs_map     = self.fetcher.preload_datacollections(sample_ids)
-        rels_map    = self.fetcher.preload_relationships(sample_ids)
-        syns_map    = self.fetcher.preload_synonyms(sample_ids)
+        pops_map = self.fetcher.preload_populations(sample_ids)
+        dcs_map = self.fetcher.preload_datacollections(sample_ids)
+        rels_map = self.fetcher.preload_relationships(sample_ids)
+        syns_map = self.fetcher.preload_synonyms(sample_ids)
 
         for row in samples_info:
             code = row[1]

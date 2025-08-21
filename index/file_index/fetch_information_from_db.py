@@ -3,13 +3,13 @@ from typing import Any
 from .utils import create_the_dictionary_structure
 from collections import defaultdict
 
+
 class FetchFileFromDB:
     def __init__(self, db_config: dict):
         self.db_config = db_config
 
     # Fetch files for full indexing
     def fetch_files_for_create(self) -> list[tuple]:
-
         fetch_files_sql = """
         SELECT f.file_id, f.url, f.md5, dt.code, ag.description
         FROM file f
@@ -34,10 +34,9 @@ class FetchFileFromDB:
         db.close()
 
         return files
-    
+
     # Fetch files for update of indexing
     def fetch_files_for_update(self) -> list[tuple]:
-
         fetch_files_sql = """
         SELECT f.file_id, f.url, f.md5, dt.code, ag.description
         FROM file f
@@ -63,7 +62,7 @@ class FetchFileFromDB:
         db.close()
 
         return files
-    
+
     # Fetch files that are no longer foreign_file TRUE & in_current_tree TRUE but are still in index
     # These files need to be deleted from the index
     def fetch_files_to_delete_from_index(self) -> list[int]:
@@ -74,7 +73,7 @@ class FetchFileFromDB:
         AND (f.indexed_in_elasticsearch IS TRUE)
         ORDER BY f.file_id
         """
-        
+
         db = mysql.connector.connect(
             host=self.db_config["host"],
             port=self.db_config["port"],
@@ -90,7 +89,6 @@ class FetchFileFromDB:
         db.close()
 
         return files
-
 
     def update_elasticsearch_file(self) -> list[tuple]:
         """Update the column set indexed_in_elasticsearch = 1 based on if foreign file/ in_current_tree is true
@@ -117,8 +115,7 @@ class FetchFileFromDB:
         cursor.close()
         db.close()
 
-
-    def preload_data(self, file_ids: list[int]) -> tuple[defaultdict, defaultdict] :
+    def preload_data(self, file_ids: list[int]) -> tuple[defaultdict, defaultdict]:
         """Preload data to reduce the number of queries on the database
 
         Args:
@@ -126,8 +123,8 @@ class FetchFileFromDB:
 
         Returns:
             tuple[defaultdict, defaultdict]: Default dict
-        """              
-        format_strings = ",".join(['%s'] * len(file_ids))
+        """
+        format_strings = ",".join(["%s"] * len(file_ids))
 
         fetch_datacollections_sql = f"""
         SELECT fdc.file_id, dc.title, dc.reuse_policy from data_collection dc, file_data_collection fdc
@@ -135,7 +132,7 @@ class FetchFileFromDB:
         AND fdc.file_id IN ({format_strings})
         ORDER BY dc.reuse_policy_precedence
         """
-        
+
         db = mysql.connector.connect(
             host=self.db_config["host"],
             port=self.db_config["port"],
@@ -150,7 +147,7 @@ class FetchFileFromDB:
         for file_id, collection, resuse_policy in cursor.fetchall():
             dc_map[file_id].append((collection, resuse_policy))
 
-        fetch_sample_sql =  f"""
+        fetch_sample_sql = f"""
         SELECT  distinct file_data_collection.file_id, sample.name, population.description AS pop_description 
         FROM file_data_collection, sample_file, sample, dc_sample_pop_assign, population
         WHERE file_data_collection.file_id IN ({format_strings}) 
@@ -169,10 +166,11 @@ class FetchFileFromDB:
         cursor.close()
         db.close()
         return dc_map, sp_map
-        
- 
-    def populate_the_dictionary(self, row: tuple, dc_map: defaultdict, sp_map: defaultdict) -> dict[str, Any]:
-        """Populate the file dictionary 
+
+    def populate_the_dictionary(
+        self, row: tuple, dc_map: defaultdict, sp_map: defaultdict
+    ) -> dict[str, Any]:
+        """Populate the file dictionary
 
         Args:
             row (tuple): The row from the function fetch_file_from_db
@@ -181,7 +179,7 @@ class FetchFileFromDB:
 
         Returns:
             dict[str, Any]: Built file dictionary
-        """        
+        """
         file_id = row[0]
         file_dict = create_the_dictionary_structure()
 
@@ -192,16 +190,17 @@ class FetchFileFromDB:
         for s_pop in sp_map.get(file_id, []):
             file_dict["samples"].append(s_pop[0])
             file_dict["populations"].append(s_pop[1])
-        
+
         # get unique populations
         file_dict["populations"] = list(set(file_dict["populations"]))
-        
-        file_dict.update({
-            "dataType": row[3],
-            "analysisGroup": row[4],
-            "url": row[1],
-            "md5": row[2],
-        })
+
+        file_dict.update(
+            {
+                "dataType": row[3],
+                "analysisGroup": row[4],
+                "url": row[1],
+                "md5": row[2],
+            }
+        )
 
         return file_dict
-

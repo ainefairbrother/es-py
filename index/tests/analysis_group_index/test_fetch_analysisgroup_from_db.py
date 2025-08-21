@@ -5,13 +5,14 @@ from index.analysis_group_index.fetch_ag_from_db import FetchAGFromDB
 
 # ───────────────────────── Fixtures ──────────────────────────
 
+
 @pytest.fixture
 def db_config() -> dict[str, Any]:
     """Fixture for the db configuration
 
     Returns:
         dict[str, Any]: The configuration dictionary
-    """    
+    """
     return {
         "host": "localhost",
         "port": 3306,
@@ -30,11 +31,13 @@ def fetcher(db_config: dict[str, Any]) -> FetchAGFromDB:
 
     Returns:
         FetchAGFromDB: FetchAGFromDB class
-    """    
-    
+    """
+
     return FetchAGFromDB(db_config)
 
+
 # ────────────────────────── Tests ────────────────────────────
+
 
 def test_fetch_information_from_db(mocker, fetcher: FetchAGFromDB):
     """Test for fetching information from DB
@@ -42,9 +45,11 @@ def test_fetch_information_from_db(mocker, fetcher: FetchAGFromDB):
     Args:
         mocker (MockerFixture): Mocker for the DB
         fetcher (FetchAGFromDB): FetchAGFromDB class
-    """    
+    """
     mock_cursor = MagicMock()
-    mock_cursor.fetchall.return_value = [(1, "test_exome", "Test exome", "test-exome", 2, None)]
+    mock_cursor.fetchall.return_value = [
+        (1, "test_exome", "Test exome", "test-exome", 2, None)
+    ]
     mock_db = MagicMock()
     mock_db.cursor.return_value = mock_cursor
     mocker.patch(
@@ -54,12 +59,13 @@ def test_fetch_information_from_db(mocker, fetcher: FetchAGFromDB):
     result = fetcher.fetch_information_from_DB()
     assert result[0][1] == "test_exome"
 
+
 def test_build_ag_info(fetcher: FetchAGFromDB):
     """Test for the FetchAGFromDB- test_build_ag_info
 
     Args:
         fetcher (FetchAGFromDB): FetchAGFromDB class
-    """    
+    """
     return_value = (1, "test_exome", "Test exome", "test-exome", 2, None)
 
     result = fetcher.build_ag_info(return_value)
