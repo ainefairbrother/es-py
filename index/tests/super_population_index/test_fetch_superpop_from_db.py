@@ -70,5 +70,5 @@ def test_build_superpopulation_info(mocker: MockerFixture, fetcher: FetchSPFromD
 
     result = fetcher.build_superpopulation_info(row)
 
-    assert result["elasticId"] == "TEST"
+    assert result["elastic_id"] == "TEST"
     assert result["name"] == "Test ancestry"
