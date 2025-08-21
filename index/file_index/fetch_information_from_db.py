@@ -12,11 +12,11 @@ class FetchFileFromDB:
 
         fetch_files_sql = """
         SELECT f.file_id, f.url, f.md5, dt.code, ag.description
-        FROM file f 
-        LEFT JOIN data_type dt ON f.data_type_id = dt.data_type_id
-        LEFT JOIN analysis_group ag ON f.analysis_group_id = ag.analysis_group_id
-        WHERE (f.foreign_file IS TRUE OR f.in_current_tree IS TRUE)
-        ORDER BY file_id
+        FROM file f
+        LEFT JOIN data_type dt       ON f.data_type_id      = dt.data_type_id
+        LEFT JOIN analysis_group ag  ON f.analysis_group_id = ag.analysis_group_id
+        WHERE (COALESCE(f.foreign_file, 0) = 1 OR COALESCE(f.in_current_tree, 0) = 1)
+        ORDER BY f.file_id
         """
 
         db = mysql.connector.connect(
@@ -40,12 +40,12 @@ class FetchFileFromDB:
 
         fetch_files_sql = """
         SELECT f.file_id, f.url, f.md5, dt.code, ag.description
-        FROM file f 
-        LEFT JOIN data_type dt ON f.data_type_id = dt.data_type_id
-        LEFT JOIN analysis_group ag ON f.analysis_group_id = ag.analysis_group_id
+        FROM file f
+        LEFT JOIN data_type dt       ON f.data_type_id     = dt.data_type_id
+        LEFT JOIN analysis_group ag  ON f.analysis_group_id = ag.analysis_group_id
         WHERE (f.foreign_file IS TRUE OR f.in_current_tree IS TRUE)
-            AND (f.indexed_in_elasticsearch IS NOT TRUE)
-        ORDER BY file_id
+          AND (f.indexed_in_elasticsearch IS NOT TRUE)
+        ORDER BY f.file_id
         """
 
         db = mysql.connector.connect(
@@ -67,11 +67,13 @@ class FetchFileFromDB:
     # Fetch files that are no longer foreign_file TRUE & in_current_tree TRUE but are still in index
     # These files need to be deleted from the index
     def fetch_files_to_delete_from_index(self) -> list[int]:
-        fetch_files_sql = """SELECT f.file_id
-                 FROM file f
-                 WHERE (f.foreign_file IS NOT TRUE AND f.in_current_tree IS NOT TRUE)
-                   AND (f.indexed_in_elasticsearch IS TRUE)
-                 ORDER BY f.file_id"""
+        fetch_files_sql = """
+        SELECT f.file_id
+        FROM file f
+        WHERE (f.foreign_file IS NOT TRUE AND f.in_current_tree IS NOT TRUE)
+        AND (f.indexed_in_elasticsearch IS TRUE)
+        ORDER BY f.file_id
+        """
         
         db = mysql.connector.connect(
             host=self.db_config["host"],
