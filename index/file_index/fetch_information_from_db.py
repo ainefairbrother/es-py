@@ -101,41 +101,6 @@ class FetchFileFromDB:
 
         return files
 
-    # # Fetch files that are no longer foreign_file TRUE & in_current_tree TRUE but are still in index
-    # # These files need to be deleted from the index
-    # def fetch_files_to_delete_from_index(self) -> list[int]:
-    #     """Fetch file IDs that should be deleted from the ES index.
-
-    #     These are files that are no longer foreign or in the current tree,
-    #     but are marked as indexed in Elasticsearch.
-
-    #     Returns:
-    #         list[int]: File IDs to delete from the Elasticsearch index.
-    #     """
-    #     fetch_files_sql = """
-    #     SELECT f.file_id
-    #     FROM file f
-    #     WHERE (f.foreign_file IS NOT TRUE AND f.in_current_tree IS NOT TRUE)
-    #     AND (f.indexed_in_elasticsearch IS TRUE)
-    #     ORDER BY f.file_id
-    #     """
-
-    #     db = mysql.connector.connect(
-    #         host=self.db_config["host"],
-    #         port=self.db_config["port"],
-    #         user=self.db_config["user"],
-    #         database=self.db_config["database"],
-    #         password=self.db_config["password"],
-    #     )
-
-    #     cursor = db.cursor()
-    #     cursor.execute(fetch_files_sql)
-    #     files = [f[0] for f in cursor.fetchall()]
-    #     cursor.close()
-    #     db.close()
-
-    #     return files
-
     def update_elasticsearch_file(self) -> list[tuple]:
         """Update the `indexed_in_elasticsearch` column.
 

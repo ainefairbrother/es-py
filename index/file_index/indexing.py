@@ -17,7 +17,6 @@ other modules.
 # ──────────────────────────────────────────────────────────────
 
 import click
-import sys
 import json
 from typing import Any
 from index.elasticsearch_indexer import ElasticSearchIndexer
@@ -63,7 +62,6 @@ class FileIndexer:
         """
         if self._data is None:
             self._data = read_from_config_file(self.config_file)
-
         return self._data
 
     @property
@@ -89,26 +87,23 @@ class FileIndexer:
         return self._indexer
 
     def load_json_file(self) -> dict[str, Any]:
-        """Load index settings and mappings JSON.
+        """Load index settings and mappings from JSON.
 
         Returns:
             dict[str, Any]: Parsed JSON with "settings" and "mappings".
         """
         with open(json_file, "r") as file:
             data = json.load(file)
-
         return data
 
     def create_file_index(self) -> bool:
-        """Create the Elasticsearch index for files.
+        """Create the `file` index.
 
         Returns:
-            bool: True if the index was created, otherwise False.
+            bool: True if the index was created successfully, otherwise False.
         """
         json_data = self.load_json_file()
-        file = self.indexer.create_index(json_data["settings"], json_data["mappings"])
-
-        return file
+        return self.indexer.create_index(json_data["settings"], json_data["mappings"])
 
     def generate_actions(self, rows):
         """Generate bulk actions for indexing.
@@ -120,45 +115,23 @@ class FileIndexer:
         dc_data, sp_data = self.fetcher.preload_data(file_ids)
 
         for row in rows:
-            padded_id = f"{int(row[0]):09d}"  # match legacy ES v1.5 IDs - 9 digits, left padded like 000000057
+            padded_id = f"{int(row[0]):09d}"  # match legacy ES v1.5 IDs (9-digit, zero-padded)
             files_data = self.fetcher.populate_the_dictionary(row, dc_data, sp_data)
             yield self.indexer.index_data(files_data, padded_id, self.type_of)
 
     def build_and_index_file_info(self):
-        """Bulk index file documents.
-
-        Returns:
-            Any: Result of bulk indexing (if returned by indexer).
-        """
+        """Build and bulk index file documents."""
         if self.type_of == "create":
             rows = self.fetcher.fetch_files_for_create()
             actions = self.generate_actions(rows)
             if self.create_file_index() is True:
                 self.indexer.bulk_index(actions)
-
-                ## to mirror Perl ES indexer functionality and turn on update_elasticsearch_file
-                ## this flips the flag indexed_in_elasticsearch = 1/0
-                ## can turn this on in production
-                # self.fetcher.update_elasticsearch_file()
-                click.echo("Bulk indexing (create) successful")
-        # update
+                click.echo("Bulk indexing successful")
         else:
             rows = self.fetcher.fetch_files_for_update()
-            index_actions = self.generate_actions(rows)
-
-            ## this will delete files from the index that are not in the current tree or foreign files but are indexed in ES
-            # ids_to_delete_rows = self.fetcher.fetch_files_to_delete_from_index()
-            # ids_to_delete = [int(t[0]) for t in ids_to_delete_rows]
-            # del_actions = (self.indexer.delete_data(f"{fid:09d}") for fid in ids_to_delete)
-
-            self.indexer.bulk_index(index_actions)
-            # self.indexer.bulk_index(del_actions)
-
-            ## to mirror Perl ES indexer functionality and turn on update_elasticsearch_file
-            ## this flips the flag indexed_in_elasticsearch = 1/0
-            ## can turn this on in production
-            # self.fetcher.update_elasticsearch_file()
-            click.echo("Bulk indexing (update) successful")
+            actions = self.generate_actions(rows)
+            self.indexer.bulk_index(actions)
+            click.echo("Bulk indexing successful")
 
 
 # ──────────────────────────────────────────────────────────────
