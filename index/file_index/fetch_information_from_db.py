@@ -22,6 +22,7 @@ from collections import defaultdict
 # Fetcher
 # ──────────────────────────────────────────────────────────────
 
+
 class FetchFileFromDB:
     """Fetch file metadata and related entities from the database."""
 
@@ -125,7 +126,7 @@ class FetchFileFromDB:
         cursor.close()
         db.close()
         return dc_map, sp_map
-    
+
     ## FLAG flipper - not implemented yet
     # def update_elasticsearch_file(self) -> list[tuple]:
     #     """Update the `indexed_in_elasticsearch` column.

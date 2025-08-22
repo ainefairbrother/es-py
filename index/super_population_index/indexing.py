@@ -32,6 +32,7 @@ json_file = "index/super_population_index/superpopulations_mappings.json"
 # Indexer
 # ──────────────────────────────────────────────────────────────
 
+
 class SuperPopulationIndexer:
     """Indexer for the `superpopulation` index."""
 
@@ -94,6 +95,7 @@ class SuperPopulationIndexer:
 # ──────────────────────────────────────────────────────────────
 # CLI
 # ──────────────────────────────────────────────────────────────
+
 
 @click.command()
 @click.option(

@@ -37,6 +37,7 @@ json_file = "index/sample_index/sample.json"
 # Indexer
 # ──────────────────────────────────────────────────────────────
 
+
 class SampleIndexer:
     """Indexer for the `sample` index."""
 
@@ -167,6 +168,7 @@ class SampleIndexer:
 # ──────────────────────────────────────────────────────────────
 # CLI
 # ──────────────────────────────────────────────────────────────
+
 
 @click.command()
 @click.option(

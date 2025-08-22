@@ -36,6 +36,7 @@ json_file = "index/file_index/file.json"
 # Indexer
 # ──────────────────────────────────────────────────────────────
 
+
 class FileIndexer:
     """Indexer for the `file` index."""
 
@@ -116,7 +117,9 @@ class FileIndexer:
         dc_data, sp_data = self.fetcher.preload_data(file_ids)
 
         for row in rows:
-            padded_id = f"{int(row[0]):09d}"  # match legacy ES v1.5 IDs (9-digit, zero-padded)
+            padded_id = (
+                f"{int(row[0]):09d}"  # match legacy ES v1.5 IDs (9-digit, zero-padded)
+            )
             files_data = self.fetcher.populate_the_dictionary(row, dc_data, sp_data)
             yield self.indexer.index_data(files_data, padded_id, self.type_of)
 
@@ -158,6 +161,7 @@ class FileIndexer:
 # ──────────────────────────────────────────────────────────────
 # CLI
 # ──────────────────────────────────────────────────────────────
+
 
 @click.command()
 @click.option(

@@ -2,7 +2,7 @@
 
 Provides DB accessors to retrieve and assemble information needed to build
 `sample` documents for Elasticsearch. This module encapsulates SQL queries,
-batched preloading, and shaping of results into a consistent dictionary 
+batched preloading, and shaping of results into a consistent dictionary
 structure suitable for indexing.
 
 All functionality is exposed via the `SampleDetailsFetcher` class.
@@ -20,6 +20,7 @@ from index.sample_index.utils import create_the_dictionary_structure
 # ──────────────────────────────────────────────────────────────
 # Fetcher
 # ──────────────────────────────────────────────────────────────
+
 
 class SampleDetailsFetcher:
     """Fetch sample metadata and related entities from the database."""

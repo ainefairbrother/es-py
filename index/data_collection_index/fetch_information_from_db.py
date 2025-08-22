@@ -21,6 +21,7 @@ from .utils import create_the_dictionary_structure
 # Fetcher
 # ──────────────────────────────────────────────────────────────
 
+
 class DCDetailsFetcher:
     """Data collection details fetcher.
 

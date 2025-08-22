@@ -36,6 +36,7 @@ json_file = "index/data_collection_index/data_collections.json"
 # Indexer
 # ──────────────────────────────────────────────────────────────
 
+
 class DataCollectionsIndexer:
     """Index builder for data collections.
 
@@ -121,6 +122,7 @@ class DataCollectionsIndexer:
 # CLI
 # ──────────────────────────────────────────────────────────────
 
+
 @click.command()
 @click.option(
     "--config_file",
@@ -152,6 +154,7 @@ if __name__ == "__main__":
 # ──────────────────────────────────────────────────────────────
 # Programmatic API
 # ──────────────────────────────────────────────────────────────
+
 
 def run(config_file, es_host, type_of):
     """Programmatic entry point for indexing.

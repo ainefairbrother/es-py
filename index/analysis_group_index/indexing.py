@@ -35,6 +35,7 @@ json_file = "index/analysis_group_index/analysis_group.json"
 # Indexer
 # ──────────────────────────────────────────────────────────────
 
+
 class AnalysisGroupIndexer:
     """Indexer for the `analysis_group` index."""
 
@@ -97,6 +98,7 @@ class AnalysisGroupIndexer:
 # ──────────────────────────────────────────────────────────────
 # CLI
 # ──────────────────────────────────────────────────────────────
+
 
 @click.command()
 @click.option(

@@ -35,6 +35,7 @@ json_file = "index/population_index/populations_mappings.json"
 # Indexer
 # ──────────────────────────────────────────────────────────────
 
+
 class PopulationIndexer:
     """Indexer for the `population` index."""
 
@@ -109,6 +110,7 @@ class PopulationIndexer:
 # CLI
 # ──────────────────────────────────────────────────────────────
 
+
 @click.command()
 @click.option("--config_file", "-c", type=click.Path(exists=True), required=True)
 @click.option("--es_host", "-es", type=str, required=True)
@@ -137,6 +139,7 @@ if __name__ == "__main__":
 # ──────────────────────────────────────────────────────────────
 # Programmatic API
 # ──────────────────────────────────────────────────────────────
+
 
 # Enables programmatic use (from main.py)
 def run(config_file, es_host, type_of):

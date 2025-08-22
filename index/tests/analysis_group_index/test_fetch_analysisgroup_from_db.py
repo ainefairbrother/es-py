@@ -53,7 +53,8 @@ def test_fetch_information_from_db(mocker, fetcher: FetchAGFromDB):
     mock_db = MagicMock()
     mock_db.cursor.return_value = mock_cursor
     mocker.patch(
-        "index.analysis_group_index.fetch_information_from_db.connect", return_value=mock_db
+        "index.analysis_group_index.fetch_information_from_db.connect",
+        return_value=mock_db,
     )
 
     result = fetcher.fetch_information_from_DB()

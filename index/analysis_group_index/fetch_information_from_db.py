@@ -21,6 +21,7 @@ from .utils import create_the_dictionary_structure
 # Fetcher
 # ──────────────────────────────────────────────────────────────
 
+
 class FetchAGFromDB:
     """Fetcher for analysis group information."""
 

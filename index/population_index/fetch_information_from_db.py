@@ -22,6 +22,7 @@ from .utils import create_the_dictionary_structure
 # Fetcher
 # ──────────────────────────────────────────────────────────────
 
+
 class PopulationDetailsFetcher:
     """Fetch population metadata and related entities from the database."""
 
