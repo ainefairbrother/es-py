@@ -1,5 +1,6 @@
 certifi==2025.1.31
 click==8.1.8
+coverage==7.10.1
 elastic-transport==8.17.1
 elasticsearch==8.17.2
 iniconfig==2.1.0
@@ -7,8 +8,9 @@ mocker==1.1.1
 mysql-connector-python==9.2.0
 packaging==25.0
 pluggy==1.6.0
-pygments==2.19.1
-pytest==8.4.0
+Pygments==2.19.1
+pytest==8.4.1
+pytest-cov==6.2.1
 pytest-mock==3.14.1
 ruff==0.11.4
 urllib3==2.3.0
