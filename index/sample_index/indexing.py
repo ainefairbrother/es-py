@@ -138,6 +138,15 @@ class SampleIndexer:
                 rels_map=rels_map,
                 syns_map=syns_map,
             )
+            
+            flat = []
+            for dc in samples_data.get("dataCollections", []):
+                for key in ("variants", "sequence", "alignment"):
+                    vals = dc.get(key)
+                    if vals:
+                        flat.extend(vals)
+            samples_data["dataCollectionsAnalysisGroups"] = flat
+            
             yield self.indexer.index_data(samples_data, code, self.type_of)
 
     def build_and_index_sample_info(self):
