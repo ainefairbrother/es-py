@@ -94,16 +94,24 @@ class PopulationIndexer:
                 row, dc_map, overlap_map
             )
 
+            flat = []
+            for dc in population_data.get("dataCollections", []):
+                for key in ("variants", "sequence", "alignment"):
+                    vals = dc.get(key)
+                    if vals:
+                        flat.extend(vals)
+            population_data["dataCollectionsAnalysisGroups"] = flat
+
             action = self.indexer.index_data(population_data, code, self.type_of)
             actions.append(action)
 
         if self.type_of == "create":
             if self.create_population_index() is True:
                 self.indexer.bulk_index(actions)
-                click.echo(f"Bulk indexing successful")
+                click.echo("Bulk indexing successful")
         else:
             self.indexer.bulk_index(actions)
-            click.echo(f"Bulk indexing successful")
+            click.echo("Bulk indexing successful")
 
 
 # ──────────────────────────────────────────────────────────────
