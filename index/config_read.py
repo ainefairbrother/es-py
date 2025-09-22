@@ -1,22 +1,39 @@
+# index/config_read.py
 from configparser import ConfigParser
+import os
+from typing import Any, Callable
 
+def _get(config: ConfigParser, section: str, key: str,
+         *, default: Any = None, required: bool = False,
+         cast: Callable[[str], Any] | None = None,
+         env_prefix: str | None = "IGSR") -> Any:
+    env_name = f"{env_prefix}_{section}_{key}".upper() if env_prefix else None
+    if env_name and env_name in os.environ:
+        val = os.environ[env_name]
+    else:
+        if not config.has_section(section) or not config.has_option(section, key):
+            if required and default is None:
+                raise KeyError(f"Missing [{section}] {key} in config and no env override")
+            return default
+        val = config.get(section, key)
 
-def read_from_config_file(config_file: str) -> dict[str, any]:
-    """Reads from config file using ConfigParser
+    return cast(val) if cast else val
 
-    Args:
-        config_file (str): the configuration file
+def read_from_config_file(config_file: str) -> dict[str, Any]:
+    cfg = ConfigParser()
+    cfg.read(config_file)
 
-    Returns:
-        dict[str, any]: Data of configuration
-    """
-    data = {}
-    config = ConfigParser()
-    config.read(config_file)
-    data["host"] = config["database"]["host"]
-    data["port"] = config["database"]["port"]
-    data["user"] = config["database"]["user"]
-    data["database"] = config["database"]["name"]
-    data["password"] = config["database"]["password"]
+    data: dict[str, Any] = {}
+
+    # database connection config
+    data["host"]     = _get(cfg, "database", "host", required=True)
+    data["port"]     = _get(cfg, "database", "port", required=True)
+    data["user"]     = _get(cfg, "database", "user", required=True)
+    data["database"] = _get(cfg, "database", "name", required=True)
+    data["password"] = _get(cfg, "database", "password", required=True)
+
+    # site config (used by the sitemap fetcher)
+    data["site_root"]     = _get(cfg, "site", "site_root", required=True)
+    data["site_base"]     = _get(cfg, "site", "site_base", required=True)
 
     return data

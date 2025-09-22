@@ -12,6 +12,7 @@ All functionality is exposed via the `SampleDetailsFetcher` class.
 # Imports
 # ──────────────────────────────────────────────────────────────
 
+
 from mysql.connector import connect
 from typing import Any, Iterable
 from index.sample_index.utils import create_the_dictionary_structure
