@@ -55,7 +55,7 @@ DEFAULT_MAX_PAGES    = 2000
 DEFAULT_MAX_CHARS    = 200_000
 
 # Extraction thresholds
-_MIN_USEFUL_CHARS = 20  # treat bodies shorter than this as probably not meaningful
+_MIN_USEFUL_CHARS = 20  # keep low to allow short but meaningful content
 
 # Exclude families we never want
 PATH_EXCLUDE_RE = re.compile(r"^/(?:category/|node/)", re.I)
@@ -87,9 +87,40 @@ _CRUMB_RE = re.compile(
     re.I,
 )
 
+# Site-brand suffix to drop from titles
+SITE_BRAND_SUFFIX_RE = re.compile(
+    r"\s*\|\s*(?:1000\s*Genomes|IGSR|International Genome Sample Resource|"
+    r"The International Genome Sample Resource)\s*$",
+    re.I,
+)
+
+# One-word heading bodies we should not accept on their own
+_HEADING_ONLY_RE = re.compile(
+    r"^(overview|summary|introduction|about|principles|help|faq|news)$", re.I
+)
+
 # ──────────────────────────────────────────────────────────────
-# Helpers (URL + page text cleaning)
+# Helpers (URL + text utilities)
 # ──────────────────────────────────────────────────────────────
+
+def _strip_brand_suffix(title: str) -> str:
+    """Remove site-brand trailer like ' | 1000 Genomes'."""
+    return SITE_BRAND_SUFFIX_RE.sub("", title or "").strip()
+
+def _looks_heading_only(text: Optional[str]) -> bool:
+    """
+    Return True if the text looks like a bare heading (e.g., 'Overview') or is
+    trivially short. This avoids accepting containers that only capture H1/H2.
+    """
+    if not text:
+        return True
+    s = text.strip()
+    if not s:
+        return True
+    # very short single-line with no sentence punctuation → heading-ish
+    if "\n" not in s and len(s.split()) <= 6 and not re.search(r"[.!?;:]", s):
+        return bool(_HEADING_ONLY_RE.match(s)) or len(s) <= 30
+    return False
 
 def _remove_standalone_crumb_lines(text: str) -> str:
     out_lines = []
@@ -109,7 +140,7 @@ def _encode_for_request(url: str) -> str:
     )
 
 def _legacy_norm(path: str) -> str:
-    # legacy /data-collections/foo.html to /data-collection/foo
+    # legacy /data-collections/foo.html → /data-collection/foo
     m = re.match(r"^/data-portal/data-collections/([^.]+)\.html$", path, re.I)
     return f"/data-portal/data-collection/{m.group(1)}" if m else path
 
@@ -124,7 +155,7 @@ def _h1_from_html(html_src: str) -> Optional[str]:
     return re.sub(r"\s+", " ", html_to_text(m.group(1))).strip()
 
 def _strip_chrome(text: str) -> str:
-    # Strip site furniture and boilerplate we never want to index
+    """Remove footer/nav boilerplate and other site furniture."""
     patterns = [
         r"\bToggle navigation\b",
         r"IGSR:\s*The International Genome Sample Resource",
@@ -154,11 +185,14 @@ def _drop_leading_crumb_lines(text: str) -> str:
     return "\n".join(out).strip()
 
 def _remove_title_lines(text: str, title_main: Optional[str], h1: Optional[str]) -> str:
+    """Remove the first line if it is the HTML <title> or the <h1>."""
     if not text:
         return text
+
     def strip_first_line(t: str, needle: str) -> str:
         pat = r"^\s*" + re.escape(needle) + r"\s*(?:\r?\n|$)"
         return re.sub(pat, "", t, count=1, flags=re.I | re.M)
+
     if title_main:
         text = strip_first_line(text, title_main.strip())
     if h1 and h1.lower() != (title_main or "").lower():
@@ -183,24 +217,29 @@ def _meta_description(html_src: str) -> Optional[str]:
 
 def _extract_from_semantic(html_src: str) -> Optional[str]:
     """
-    Return the *HTML* of the most likely main content container so that the
-    caller can apply html_to_text() and uniform post-cleaning.
+    Return the *HTML* of the most likely main content container. We score
+    candidates by the length of their text (after HTML→text), not HTML size.
     """
     patterns = [
         r"<main\b[^>]*>(.*?)</main>",
         r"<article\b[^>]*>(.*?)</article>",
+        r"<section\b[^>]*>(.*?)</section>",
         r"<div\b[^>]*role=['\"]main['\"][^>]*>(.*?)</div>",
         r"<div\b[^>]*id=['\"]content['\"][^>]*>(.*?)</div>",
-        r"<div\b[^>]*class=['\"][^\"']*(?:content|article|entry-content)[^\"']*['\"][^>]*>(.*?)</div>",
+        # Drupal/IGSR-ish content containers
+        r"<div\b[^>]*class=['\"][^\"']*(?:region-content|page-content|node__content|"
+        r"field--name-body|field-name-body|content-body|pane-content|pane-node|"
+        r"entry-content|article|content)[^\"']*['\"][^>]*>(.*?)</div>",
     ]
-    candidates = []
+    best_html, best_len = None, 0
     for pat in patterns:
-        m = re.search(pat, html_src, re.I | re.S)
-        if m:
-            candidates.append(m.group(1))
-    if not candidates:
-        return None
-    return max(candidates, key=len)  # return the biggest segment's HTML
+        for m in re.finditer(pat, html_src, flags=re.I | re.S):
+            seg_html = m.group(1)
+            seg_txt  = re.sub(r"\s+", " ", html_to_text(seg_html)).strip()
+            L = len(seg_txt)
+            if L > best_len:
+                best_html, best_len = seg_html, L
+    return best_html
 
 def _extract_from_noscript(html_src: str) -> Optional[str]:
     ns = []
@@ -238,7 +277,7 @@ def _jsonld_article_text(html_src: str) -> Optional[str]:
     return text
 
 def _extract_framework_boot_json(html_src: str) -> Optional[str]:
-    # Heuristic: framework boot JSON can contain readable content copies
+    """Heuristic: framework boot JSON can contain readable content copies."""
     blobs: List[str] = []
     for m in re.finditer(r'<script[^>]+id=["\']__NEXT_DATA__["\'][^>]*>(.*?)</script>', html_src, re.I | re.S):
         blobs.append(m.group(1).strip())
@@ -288,41 +327,45 @@ def _postclean(text: str, title_main: Optional[str], h1: Optional[str]) -> str:
     return text.strip()
 
 def _extract_main_text(html_src: str, title_main: Optional[str]) -> str:
-    """Try multiple strategies to extract useful body text from HTML."""
+    """
+    Try multiple strategies to extract useful body text from HTML.
+    We reject captures that look like a bare heading (e.g., 'Overview').
+    """
     h1 = _h1_from_html(html_src)
 
     seg = _extract_from_semantic(html_src)
     if seg:
         t = _postclean(html_to_text(seg), title_main, h1)
-        if t and len(t) >= _MIN_USEFUL_CHARS and "loading" not in t.lower():
+        if t and not _looks_heading_only(t) and len(t) >= _MIN_USEFUL_CHARS and "loading" not in t.lower():
             return t
 
     ns = _extract_from_noscript(html_src)
     if ns:
         t = _postclean(ns, title_main, h1)
-        if t and len(t) >= _MIN_USEFUL_CHARS and "loading" not in t.lower():
+        if t and not _looks_heading_only(t) and len(t) >= _MIN_USEFUL_CHARS and "loading" not in t.lower():
             return t
 
     jl = _jsonld_article_text(html_src)
     if jl:
         t = _postclean(jl, title_main, h1)
-        if t and len(t) >= _MIN_USEFUL_CHARS and "loading" not in t.lower():
+        if t and not _looks_heading_only(t) and len(t) >= _MIN_USEFUL_CHARS and "loading" not in t.lower():
             return t
 
     fj = _extract_framework_boot_json(html_src)
     if fj:
         t = _postclean(fj, title_main, h1)
-        if t and len(t) >= _MIN_USEFUL_CHARS and "loading" not in t.lower():
+        if t and not _looks_heading_only(t) and len(t) >= _MIN_USEFUL_CHARS and "loading" not in t.lower():
             return t
 
     md = _meta_description(html_src)
     if md:
         return md
 
+    # fallback: raw HTML → text
     return _postclean(html_to_text(html_src), title_main, h1)
 
 # ──────────────────────────────────────────────────────────────
-# GitHub markdown fallback for data-collection pages
+# GitHub markdown fallback (collections + simple pages)
 # ──────────────────────────────────────────────────────────────
 
 def _github_md_url(slug: str) -> str:
@@ -352,7 +395,27 @@ def _http_get_text_simple(url: str, timeout: int) -> Optional[str]:
 def _fetch_markdown_from_github(slug: str, timeout: int) -> Optional[str]:
     return _http_get_text_simple(_github_md_url(slug), timeout=timeout)
 
-# --- Front-matter + heading cleaners ----------------------------------------
+# small fallback for simple top-level pages (e.g. /sample_collection_principles)
+def _fetch_markdown_for_simple_page(rel_path: str, timeout: int) -> Optional[str]:
+    """
+    Try a small set of repo locations for top-level pages
+    (/foo → foo.md). Keeps scope tight to avoid unintended fetches.
+    """
+    slug = (rel_path or "/").strip("/").split("/", 1)[0]
+    if not slug:
+        return None
+    candidates = [
+        f"https://raw.githubusercontent.com/igsr/gca_1000genomes_website/master/{slug}.md",
+        f"https://raw.githubusercontent.com/igsr/gca_1000genomes_website/master/_pages/{slug}.md",
+        f"https://raw.githubusercontent.com/igsr/gca_1000genomes_website/master/_faq/{slug}.md",
+    ]
+    for url in candidates:
+        md = _http_get_text_simple(url, timeout=timeout)
+        if md:
+            return md
+    return None
+
+# --- front-matter + heading cleaners ----------------------------------------
 
 _FRONT_MATTER_RE = re.compile(r'^\ufeff?\s*---\s*\n.*?\n---\s*\n?', re.S)
 
@@ -371,8 +434,8 @@ def _clean_md_title(title: Optional[str]) -> Optional[str]:
 
 # --- markdown-to-text helpers -----------------------------------------------
 
-_LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")            # [text](url)
-_IMG_RE  = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")           # ![alt](url)
+_LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")  # [text](url)
+_IMG_RE  = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)") # ![alt](url)
 _CODE_FENCE_RE = re.compile(r"^```.*?$", re.M)
 _HDR_RE  = re.compile(r"^\s{0,3}#{1,6}\s*", re.M)
 _BULLET_RE = re.compile(r"^\s*[-*+]\s+", re.M)
@@ -381,16 +444,16 @@ _BQ_RE   = re.compile(r"^\s*>\s?", re.M)
 _BACKTICK_RE = re.compile(r"`([^`]+)`")
 
 def _markdown_to_text(md: str) -> str:
-    # Remove code fences and markdown constructs
+    # remove code fences and markdown constructs
     md = _CODE_FENCE_RE.sub("", md)
-    md = _IMG_RE.sub(lambda m: m.group(1).strip(), md)  # images to alt text
+    md = _IMG_RE.sub(lambda m: m.group(1).strip(), md)           # images → alt text
     md = _LINK_RE.sub(lambda m: (m.group(1) or m.group(2)).strip(), md)
     md = _HDR_RE.sub("", md)
     md = _BULLET_RE.sub("", md)
     md = _OL_RE.sub("", md)
     md = _BQ_RE.sub("", md)
     md = _BACKTICK_RE.sub(r"\1", md)
-    # Normalise newlines and spaces; strip any leftover HTML (e.g. <center><img ...>)
+    # normalise newlines and spaces; strip leftover HTML (e.g. <center><img ...>)
     md = re.sub(r"\r\n?", "\n", md)
     md = html_to_text(md)
     md = re.sub(r"[ \t]+", " ", md)
@@ -459,7 +522,7 @@ class FetchSitemapFromSite:
             url = f"{self._origin[0]}:{url}"
         u = urllib.parse.urlsplit(url)
 
-        # relative/root-relative to absolute on site_root
+        # relative/root-relative → absolute on site_root
         if not u.scheme and not u.netloc:
             absu = urllib.parse.urljoin(self.source + "/", url)
             us = urllib.parse.urlsplit(absu)
@@ -558,7 +621,7 @@ class FetchSitemapFromSite:
         for p in COLLECTION_PATH_ANY_RE.findall(html_src):
             paths.append(p.strip())
 
-        # legacy collections to canonical
+        # legacy collections → canonical
         for m in COLLECTIONS_LEGACY_RE.finditer(html_src):
             slug = m.group(1).strip()
             if slug:
@@ -666,36 +729,49 @@ class FetchSitemapFromSite:
             is_collection = rel_path.lower().startswith("/data-portal/data-collection/")
             slug = rel_path.rsplit("/", 1)[-1] if is_collection else None
 
+            # Title: drop brand suffix and the " | ..." trailer
             full_title = _title_from_html(html_src) or u
-            title_main = full_title.split("|", 1)[0].strip()
+            title_main = (full_title.split("|", 1)[0] or "").strip()
+            doc_title  = _strip_brand_suffix(title_main) or _strip_brand_suffix(full_title)
 
-            content = _extract_main_text(html_src, title_main)
+            # Extract content from HTML
+            content = _extract_main_text(html_src, doc_title)
 
-            # For data-collection pages, fallback to GitHub markdown if content looks like a loader or too short
+            # Fallback for data-collection pages (GitHub .md)
             if is_collection and (_looks_loaderish(content) or len(content) < _MIN_USEFUL_CHARS):
                 md = _fetch_markdown_from_github(slug, timeout=self.http_timeout) if slug else None
                 if md:
-                    # 1) remove YAML front matter
-                    md_nf = _strip_yaml_front_matter(md)
-                    # 2) title from first markdown heading (cleaned), else fallback to slug
+                    md_nf        = _strip_yaml_front_matter(md)
                     md_title_raw = _first_heading_from_markdown(md_nf)
-                    md_title = _clean_md_title(md_title_raw) or slug
-                    # 3) convert markdown to plain, then strip any leftover HTML
-                    md_text = _markdown_to_text(md_nf)
-                    # 4) final clean; also remove the title line if it appears at top
-                    md_text = _postclean(md_text, md_title, None)
+                    md_title     = _clean_md_title(md_title_raw) or slug
+                    md_text      = _markdown_to_text(md_nf)
+                    md_text      = _postclean(md_text, md_title, None)
                     if md_text and len(md_text) >= _MIN_USEFUL_CHARS:
-                        content = md_text
-                        full_title = md_title  # prefer clean md title (or slug)
+                        content   = md_text
+                        doc_title = _strip_brand_suffix(md_title)
 
-            # If still loader-ish after fallback, skip indexing rather than store "Loading..."
+            # Gentle extra fallback for simple top-level pages (e.g. dev pages that render "Overview" only)
+            if _looks_heading_only(content) or len(content or "") < 60:
+                md2 = _fetch_markdown_for_simple_page(rel_path, timeout=self.http_timeout)
+                if md2:
+                    md2_nf        = _strip_yaml_front_matter(md2)
+                    md2_title_raw = _first_heading_from_markdown(md2_nf)
+                    md2_title     = _clean_md_title(md2_title_raw) or doc_title
+                    md2_text      = _markdown_to_text(md2_nf)
+                    md2_text      = _postclean(md2_text, md2_title, None)
+                    if len(md2_text) >= 60 and not _looks_heading_only(md2_text):
+                        content   = md2_text
+                        doc_title = _strip_brand_suffix(md2_title)
+
+            # If still loader-ish after fallbacks, skip indexing rather than store "Loading..."
             if _looks_loaderish(content):
                 return None
 
+            # Trim large bodies
             if self.max_chars and len(content) > self.max_chars:
                 content = content[: self.max_chars].rstrip()
 
-            # Normalise /index.html to / and trim trailing slash (except root), then rebase to site_base
+            # Rebase to site_base; normalise index paths and trailing slashes
             rel = rel_path + (f"?{us.query}" if us.query else "")
             if rel.endswith("/index.html"):
                 rel = rel[:-10]
@@ -706,7 +782,7 @@ class FetchSitemapFromSite:
             path, q = (rel.split("?", 1) + [""])[:2]
             url_out = f"{self.base}{quote(path, safe=PATH_SAFE)}" + (f"?{quote(q, safe=QUERY_SAFE)}" if q else "")
 
-            return {"title": full_title, "content": content, "url": url_out}
+            return {"title": doc_title, "content": content, "url": url_out}
 
         seen, submitted = set(), 0
         with cf.ThreadPoolExecutor(max_workers=self.http_workers) as ex:
