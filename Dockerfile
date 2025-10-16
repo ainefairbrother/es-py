@@ -8,7 +8,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # tini handles PID 1/signals; git only needed at build-time to clone repo;
 # ca-certificates keeps TLS happy on Elastic Cloud.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    git tini curl jq ca-certificates \
+    git tini curl jq ca-certificates libsasl2-2 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
