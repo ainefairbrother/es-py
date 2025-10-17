@@ -55,15 +55,14 @@ class DataCollectionsIndexer:
 
         Args:
             config_file: Path to the YAML/JSON configuration file.
-            es_host: Elasticsearch host to connect to (optional—overrides config).
+            es_host (str | None): Elasticsearch host (overrides config if provided).
             type_of: Operation mode, either 'create' or 'update'.
         """
         self.type_of = type_of
         self.data = read_from_config_file(config_file)
         self.fetcher = DCDetailsFetcher(self.data)
 
-        # Read ES credentials from config; CLI --es_host overrides config host if provided
-        es_cfg = self.data.get("elasticsearch", {}) if isinstance(self.data, dict) else {}
+        es_cfg = (self.data.get("elasticsearch") or {})
         self.indexer = ElasticSearchIndexer(
             es_host or es_cfg.get("host"),
             "data_collections",
@@ -81,7 +80,6 @@ class DataCollectionsIndexer:
         """
         with open(json_file, "r") as file:
             data = json.load(file)
-
         return data
 
     def create_data_collections_index(self) -> bool:
@@ -94,7 +92,6 @@ class DataCollectionsIndexer:
         data_collection = self.indexer.create_index(
             json_data["settings"], json_data["mappings"]
         )
-
         return data_collection
 
     def build_and_index_datacollections(self):
@@ -118,10 +115,10 @@ class DataCollectionsIndexer:
             if self.type_of == "create":
                 if self.create_data_collections_index() is True:
                     self.indexer.bulk_index(actions)
-                    click.echo(f"Bulk indexing successful")
+                    click.echo("Bulk indexing successful")
             else:
                 self.indexer.bulk_index(actions)
-                click.echo(f"Bulk indexing successful")
+                click.echo("Bulk indexing successful")
         except BulkIndexError as e:
             click.echo("Bulk indexing failed")
             for error in e.errors:
@@ -141,18 +138,12 @@ class DataCollectionsIndexer:
     help="Configuration file",
     required=True,
 )
-@click.option("--es_host", "-es", type=str, help="ElasticSearch host", required=False)
+@click.option("--es_host", "-es", type=str, help="Elasticsearch host (overrides config)", required=False)
 @click.option(
     "--type_of", "-t", type=str, help="Update or create an index", required=True
 )
 def create_data(config_file: str, es_host: Optional[str], type_of: str):
-    """Create or update the `data_collections` index via CLI.
-
-    Args:
-        config_file: Path to the configuration file for DB/ES access.
-        es_host: Elasticsearch host (overrides config).
-        type_of: Either 'create' for a fresh index or 'update' to reindex docs.
-    """
+    """Create or update the `data_collections` index via CLI."""
     dc_indexer = DataCollectionsIndexer(config_file, es_host, type_of)
     dc_indexer.build_and_index_datacollections()
 
@@ -167,15 +158,6 @@ if __name__ == "__main__":
 
 
 def run(config_file, es_host, type_of):
-    """Programmatic entry point for indexing.
-
-    This mirrors the CLI behaviour, allowing other modules to invoke
-    index creation or updates without spawning a subprocess.
-
-    Args:
-        config_file: Path to the configuration file.
-        es_host: Elasticsearch host.
-        type_of: 'create' or 'update'.
-    """
+    """Programmatic entry point for indexing."""
     indexer = DataCollectionsIndexer(config_file, es_host, type_of)
     result = indexer.build_and_index_datacollections()

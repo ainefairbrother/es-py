@@ -44,15 +44,14 @@ class AnalysisGroupIndexer:
 
         Args:
             config_file (str): Path to the configuration file with DB credentials.
-            es_host (str | None): Elasticsearch host (e.g., "http://localhost:9200"). Optional—overrides config.
+            es_host (str | None): Elasticsearch host (overrides config if provided).
             type_of (str): Operation type, either "create" or "update".
         """
         self.type_of = type_of
         self.data = read_from_config_file(config_file)
         self.fetcher = FetchAGFromDB(self.data)
 
-        # Read ES credentials from config; CLI --es_host overrides config host if provided
-        es_cfg = self.data.get("elasticsearch", {}) if isinstance(self.data, dict) else {}
+        es_cfg = (self.data.get("elasticsearch") or {})
         self.indexer = ElasticSearchIndexer(
             es_host or es_cfg.get("host"),
             "analysis_group",
@@ -70,7 +69,6 @@ class AnalysisGroupIndexer:
         """
         with open(json_file, "r") as file:
             data = json.load(file)
-
         return data
 
     def create_analysis_group_index(self) -> bool:
@@ -83,7 +81,6 @@ class AnalysisGroupIndexer:
         analysis_group = self.indexer.create_index(
             json_data["settings"], json_data["mappings"]
         )
-
         return analysis_group
 
     def build_and_index_analysisgroup(self):
@@ -99,10 +96,10 @@ class AnalysisGroupIndexer:
         if self.type_of == "create":
             if self.create_analysis_group_index() is True:
                 self.indexer.bulk_index(actions)
-                click.echo(f"Bulk indexing successful")
+                click.echo("Bulk indexing successful")
         else:
             self.indexer.bulk_index(actions)
-            click.echo(f"Bulk indexing successful")
+            click.echo("Bulk indexing successful")
 
 
 # ──────────────────────────────────────────────────────────────
@@ -118,18 +115,12 @@ class AnalysisGroupIndexer:
     help="Configuration file",
     required=True,
 )
-@click.option("--es_host", "-es", type=str, help="ElasticSearch host", required=False)
+@click.option("--es_host", "-es", type=str, help="Elasticsearch host (overrides config)", required=False)
 @click.option(
     "--type_of", "-t", type=str, help="Update or create an index", required=True
 )
 def create_data(config_file: str, es_host: Optional[str], type_of: str):
-    """CLI entry point to build and index analysis_group documents.
-
-    Args:
-        config_file (str): Path to configuration file with DB connection details.
-        es_host (str | None): Elasticsearch host URL (overrides config).
-        type_of (str): Operation type, either "create" or "update".
-    """
+    """CLI entry point to build and index analysis_group documents."""
     ag_indexer = AnalysisGroupIndexer(config_file, es_host, type_of)
     ag_indexer.build_and_index_analysisgroup()
 

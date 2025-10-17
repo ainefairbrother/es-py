@@ -44,17 +44,20 @@ class PopulationIndexer:
 
         Args:
             config_file (str): Path to the configuration file with DB credentials.
-            es_host (str | None): Elasticsearch host (e.g., "http://localhost:9200"). Optional—overrides config.
+            es_host (str | None): Elasticsearch host (overrides config if provided).
             type_of (str): Operation type (e.g., "create" or "update").
         """
         self.config_file = config_file
         self.es_host = es_host
         self.type_of = type_of
+
+        # DB + site + elasticsearch all come from this helper
         self.data = read_from_config_file(config_file)
+
         self.fetcher = PopulationDetailsFetcher(self.data)
 
-        # Read ES credentials from config; CLI --es_host overrides config host if provided
-        es_cfg = self.data.get("elasticsearch", {}) if isinstance(self.data, dict) else {}
+        # Build ES client from config, with CLI override for host if provided
+        es_cfg = (self.data.get("elasticsearch") or {})
         self.indexer = ElasticSearchIndexer(
             self.es_host or es_cfg.get("host"),
             "population",
@@ -72,7 +75,6 @@ class PopulationIndexer:
         """
         with open(json_file, "r") as file:
             data = json.load(file)
-
         return data
 
     def create_population_index(self) -> bool:
@@ -85,7 +87,6 @@ class PopulationIndexer:
         population = self.indexer.create_index(
             json_data["settings"], json_data["mappings"]
         )
-
         return population
 
     def build_and_index_population_info(self):
@@ -134,13 +135,7 @@ class PopulationIndexer:
 @click.option("--es_host", "-es", type=str, required=False, help="Elasticsearch host (overrides config)")
 @click.option("--type_of", "-t", type=str, required=True)
 def create_data(config_file: str, es_host: Optional[str], type_of: str):
-    """CLI entry point to build and index population documents.
-
-    Args:
-        config_file (str): Path to configuration file with DB connection details.
-        es_host (str | None): Elasticsearch host URL.
-        type_of (str): Operation type, such as "create" or "update".
-    """
+    """CLI entry point to build and index population documents."""
     indexer = PopulationIndexer(config_file, es_host, type_of)
     indexer.build_and_index_population_info()
 
@@ -161,13 +156,7 @@ if __name__ == "__main__":
 
 # Enables programmatic use
 def run(config_file, es_host, type_of):
-    """Programmatic entry point mirroring the CLI behaviour.
-
-    Args:
-        config_file: Path to configuration file with DB connection details.
-        es_host: Elasticsearch host URL.
-        type_of: Operation type, such as "create" or "update".
-    """
+    """Programmatic entry point mirroring the CLI behaviour."""
     indexer = PopulationIndexer(config_file, es_host, type_of)
     result = indexer.build_and_index_population_info()
     print(result)

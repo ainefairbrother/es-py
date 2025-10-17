@@ -41,15 +41,14 @@ class SuperPopulationIndexer:
 
         Args:
             config_file (str): Path to configuration file.
-            es_host (str | None): Elasticsearch host (optional—overrides config).
+            es_host (str | None): Elasticsearch host (overrides config if provided).
             type_of (str): Operation type, e.g. "create" or "update".
         """
         self.type_of = type_of
         self.data = read_from_config_file(config_file)
         self.fetcher = FetchSPFromDB(self.data)
 
-        # Read ES credentials from config; CLI --es_host overrides config host if provided
-        es_cfg = self.data.get("elasticsearch", {}) if isinstance(self.data, dict) else {}
+        es_cfg = (self.data.get("elasticsearch") or {})
         self.indexer = ElasticSearchIndexer(
             es_host or es_cfg.get("host"),
             "superpopulation",
@@ -60,27 +59,17 @@ class SuperPopulationIndexer:
         )
 
     def load_json_file(self) -> dict[str, Any]:
-        """Load index settings and mappings from JSON.
-
-        Returns:
-            dict[str, Any]: Parsed JSON with "settings" and "mappings".
-        """
+        """Load index settings and mappings from JSON."""
         with open(json_file, "r") as file:
             data = json.load(file)
-
         return data
 
     def create_superpopulation_index(self) -> bool:
-        """Create the `superpopulation` index.
-
-        Returns:
-            bool: True if the index was created successfully, otherwise False.
-        """
+        """Create the `superpopulation` index."""
         json_data = self.load_json_file()
         superpopulation = self.indexer.create_index(
             json_data["settings"], json_data["mappings"]
         )
-
         return superpopulation
 
     def build_and_index_superpopulation(self):
@@ -115,18 +104,12 @@ class SuperPopulationIndexer:
     help="Configuration file",
     required=True,
 )
-@click.option("--es_host", "-es", type=str, help="ElasticSearch host", required=False)
+@click.option("--es_host", "-es", type=str, help="Elasticsearch host (overrides config)", required=False)
 @click.option(
     "--type_of", "-t", type=str, help="Update or create an index", required=True
 )
 def create_data(config_file: str, es_host: Optional[str], type_of: str):
-    """CLI entry point to build and (re)index the superpopulation index.
-
-    Args:
-        config_file (str): Path to configuration file with DB credentials.
-        es_host (str | None): Elasticsearch host (overrides config).
-        type_of (str): Operation type, e.g. "create" or "update".
-    """
+    """CLI entry point to build and (re)index the superpopulation index."""
     superpop_indexer = SuperPopulationIndexer(config_file, es_host, type_of)
     superpop_indexer.build_and_index_superpopulation()
 

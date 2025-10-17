@@ -69,8 +69,7 @@ class SitemapIndexer:
         self.refresh    = str(_cfg_get(self.cfg, "refresh", "false")).lower() in ("1", "true", "yes", "on")
         self.dry_run    = str(_cfg_get(self.cfg, "dry_run", "false")).lower() in ("1", "true", "yes", "on")
 
-        # Read ES credentials from config; CLI --es_host overrides config host if provided
-        es_cfg = self.cfg.get("elasticsearch", {}) if isinstance(self.cfg, dict) else {}
+        es_cfg = (self.cfg.get("elasticsearch") or {})
         self.es = ElasticSearchIndexer(
             es_host or es_cfg.get("host"),
             self.index_name,
@@ -79,6 +78,7 @@ class SitemapIndexer:
             es_password=es_cfg.get("password"),
             es_cloud_id=es_cfg.get("cloud_id"),
         )
+
         self.type_of = type_of
         self.fetcher = FetchSitemapFromSite(self.cfg)
 
@@ -137,7 +137,8 @@ class SitemapIndexer:
         # Optional refresh (best-effort)
         if self.refresh and not self.dry_run:
             try:
-                self.es.refresh_index()
+                # If your ElasticSearchIndexer doesn't implement refresh_index, this is a no-op due to try/except
+                self.es.refresh_index()  # type: ignore[attr-defined]
             except Exception:
                 pass
 
