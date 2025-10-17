@@ -18,8 +18,7 @@ other modules (see `run()`).
 
 import click
 import json
-import configparser
-from typing import Any, Optional, Dict
+from typing import Any, Optional
 from index.elasticsearch_indexer import ElasticSearchIndexer
 from index.population_index.fetch_information_from_db import PopulationDetailsFetcher
 from index.config_read import read_from_config_file
@@ -36,22 +35,6 @@ json_file = "index/population_index/populations_mappings.json"
 # Indexer
 # ──────────────────────────────────────────────────────────────
 
-def _read_es_from_config(config_file: str) -> Dict[str, str]:
-    """Optionally read ES connection from [elasticsearch] section in config.ini."""
-    cfg = configparser.ConfigParser()
-    cfg.read(config_file)
-    if not cfg.has_section("elasticsearch"):
-        return {}
-    sec = cfg["elasticsearch"]
-    out = {
-        "es_host": sec.get("host", "").strip() or None,
-        "es_cloud_id": sec.get("cloud_id", "").strip() or None,
-        "es_api_key": sec.get("api_key", "").strip() or None,
-        "es_username": sec.get("username", "").strip() or None,
-        "es_password": sec.get("password", "").strip() or None,
-    }
-    return {k: v for k, v in out.items() if v}
-
 
 class PopulationIndexer:
     """Indexer for the `population` index."""
@@ -61,7 +44,7 @@ class PopulationIndexer:
 
         Args:
             config_file (str): Path to the configuration file with DB credentials.
-            es_host (str): Elasticsearch host (e.g., "http://localhost:9200").
+            es_host (str | None): Elasticsearch host (e.g., "http://localhost:9200"). Optional—overrides config.
             type_of (str): Operation type (e.g., "create" or "update").
         """
         self.config_file = config_file
@@ -70,18 +53,15 @@ class PopulationIndexer:
         self.data = read_from_config_file(config_file)
         self.fetcher = PopulationDetailsFetcher(self.data)
 
-        # Prefer explicit es_host if provided, otherwise read from [elasticsearch] or env.
-        es_cfg = _read_es_from_config(config_file)
-        if self.es_host:
-            es_cfg["es_host"] = self.es_host  # CLI override takes precedence
-
+        # Read ES credentials from config; CLI --es_host overrides config host if provided
+        es_cfg = self.data.get("elasticsearch", {}) if isinstance(self.data, dict) else {}
         self.indexer = ElasticSearchIndexer(
-            es_cfg.get("es_host"),
+            self.es_host or es_cfg.get("host"),
             "population",
-            es_api_key=es_cfg.get("es_api_key"),
-            es_username=es_cfg.get("es_username"),
-            es_password=es_cfg.get("es_password"),
-            es_cloud_id=es_cfg.get("es_cloud_id"),
+            es_api_key=es_cfg.get("api_key"),
+            es_username=es_cfg.get("username"),
+            es_password=es_cfg.get("password"),
+            es_cloud_id=es_cfg.get("cloud_id"),
         )
 
     def load_json_file(self) -> dict[str, Any]:
@@ -151,18 +131,18 @@ class PopulationIndexer:
 
 @click.command()
 @click.option("--config_file", "-c", type=click.Path(exists=True), required=True)
-@click.option("--es_host", "-es", type=str, required=False, envvar="ES_HOST")
+@click.option("--es_host", "-es", type=str, required=False, help="Elasticsearch host (overrides config)")
 @click.option("--type_of", "-t", type=str, required=True)
 def create_data(config_file: str, es_host: Optional[str], type_of: str):
     """CLI entry point to build and index population documents.
 
     Args:
         config_file (str): Path to configuration file with DB connection details.
-        es_host (str): Elasticsearch host URL.
+        es_host (str | None): Elasticsearch host URL.
         type_of (str): Operation type, such as "create" or "update".
     """
     indexer = PopulationIndexer(config_file, es_host, type_of)
-    result = indexer.build_and_index_population_info()
+    indexer.build_and_index_population_info()
 
 
 # ──────────────────────────────────────────────────────────────

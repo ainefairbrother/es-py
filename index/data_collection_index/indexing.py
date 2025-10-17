@@ -17,7 +17,7 @@ other modules (see `run()`).
 # ──────────────────────────────────────────────────────────────
 
 import click
-from typing import Any
+from typing import Any, Optional
 import json
 from index.elasticsearch_indexer import ElasticSearchIndexer
 from .fetch_information_from_db import DCDetailsFetcher
@@ -50,18 +50,28 @@ class DataCollectionsIndexer:
         indexer: Elasticsearch helper targeting the `data_collections` index.
     """
 
-    def __init__(self, config_file: str, es_host: str, type_of: str):
+    def __init__(self, config_file: str, es_host: Optional[str], type_of: str):
         """Initialise the indexer.
 
         Args:
             config_file: Path to the YAML/JSON configuration file.
-            es_host: Elasticsearch host to connect to.
+            es_host: Elasticsearch host to connect to (optional—overrides config).
             type_of: Operation mode, either 'create' or 'update'.
         """
         self.type_of = type_of
         self.data = read_from_config_file(config_file)
         self.fetcher = DCDetailsFetcher(self.data)
-        self.indexer = ElasticSearchIndexer(es_host, "data_collections")
+
+        # Read ES credentials from config; CLI --es_host overrides config host if provided
+        es_cfg = self.data.get("elasticsearch", {}) if isinstance(self.data, dict) else {}
+        self.indexer = ElasticSearchIndexer(
+            es_host or es_cfg.get("host"),
+            "data_collections",
+            es_api_key=es_cfg.get("api_key"),
+            es_username=es_cfg.get("username"),
+            es_password=es_cfg.get("password"),
+            es_cloud_id=es_cfg.get("cloud_id"),
+        )
 
     def load_json_file(self) -> dict[str, Any]:
         """Load index settings and mappings.
@@ -131,16 +141,16 @@ class DataCollectionsIndexer:
     help="Configuration file",
     required=True,
 )
-@click.option("--es_host", "-es", type=str, help="ElasticSearch host", required=True)
+@click.option("--es_host", "-es", type=str, help="ElasticSearch host", required=False)
 @click.option(
     "--type_of", "-t", type=str, help="Update or create an index", required=True
 )
-def create_data(config_file: str, es_host: str, type_of: str):
+def create_data(config_file: str, es_host: Optional[str], type_of: str):
     """Create or update the `data_collections` index via CLI.
 
     Args:
         config_file: Path to the configuration file for DB/ES access.
-        es_host: Elasticsearch host.
+        es_host: Elasticsearch host (overrides config).
         type_of: Either 'create' for a fresh index or 'update' to reindex docs.
     """
     dc_indexer = DataCollectionsIndexer(config_file, es_host, type_of)

@@ -20,7 +20,7 @@ other modules (see `create_data()`).
 import click
 import sys
 import json
-from typing import Any
+from typing import Any, Optional
 from index.elasticsearch_indexer import ElasticSearchIndexer
 from .fetch_information_from_db import SampleDetailsFetcher
 from index.config_read import read_from_config_file
@@ -41,12 +41,12 @@ json_file = "index/sample_index/sample.json"
 class SampleIndexer:
     """Indexer for the `sample` index."""
 
-    def __init__(self, config_file: str, es_host: str, type_of: str):
+    def __init__(self, config_file: str, es_host: Optional[str], type_of: str):
         """Initialise the Sample indexer.
 
         Args:
             config_file (str): Path to configuration file with DB credentials.
-            es_host (str): Elasticsearch host URL.
+            es_host (str | None): Elasticsearch host URL (optional—overrides config).
             type_of (str): Operation type (e.g., "create" or "update").
         """
         self.config_file = config_file
@@ -55,6 +55,7 @@ class SampleIndexer:
         self._data = None
         self._fetcher = None
         self._indexer = None
+        self._es_cfg = None
 
     @property
     def data(self):
@@ -87,7 +88,16 @@ class SampleIndexer:
             ElasticSearchIndexer: Indexer instance targeting the `sample` index.
         """
         if self._indexer is None:
-            self._indexer = ElasticSearchIndexer(self.es_host, "sample")
+            if self._es_cfg is None:
+                self._es_cfg = self.data.get("elasticsearch", {}) if isinstance(self.data, dict) else {}
+            self._indexer = ElasticSearchIndexer(
+                self.es_host or self._es_cfg.get("host"),
+                "sample",
+                es_api_key=self._es_cfg.get("api_key"),
+                es_username=self._es_cfg.get("username"),
+                es_password=self._es_cfg.get("password"),
+                es_cloud_id=self._es_cfg.get("cloud_id"),
+            )
         return self._indexer
 
     def load_json_file(self) -> dict[str, Any]:
@@ -187,16 +197,16 @@ class SampleIndexer:
     help="Configuration file",
     required=True,
 )
-@click.option("--es_host", "-es", type=str, help="ElasticSearch host", required=True)
+@click.option("--es_host", "-es", type=str, help="ElasticSearch host", required=False)
 @click.option(
     "--type_of", "-t", type=str, help="Update or create an index", required=True
 )
-def create_data(config_file: str, es_host: str, type_of: str):
+def create_data(config_file: str, es_host: Optional[str], type_of: str):
     """CLI entry point to build and (re)index the `sample` index.
 
     Args:
         config_file (str): Path to configuration file with DB connection details.
-        es_host (str): Elasticsearch host URL.
+        es_host (str | None): Elasticsearch host URL (overrides config).
         type_of (str): Operation type, such as "create" or "update".
     """
     sample_indexer = SampleIndexer(config_file, es_host, type_of)

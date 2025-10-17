@@ -10,7 +10,7 @@ first bulk) and 'update' mode (bulk only).
 # ──────────────────────────────────────────────────────────────
 
 import click, json, hashlib, os
-from typing import Any
+from typing import Any, Optional
 from urllib.parse import urlsplit, urlunsplit
 from index.elasticsearch_indexer import ElasticSearchIndexer
 from index.config_read import read_from_config_file
@@ -59,7 +59,7 @@ def _cfg_get(cfg: dict[str, Any], key: str, default: Any) -> Any:
 # ──────────────────────────────────────────────────────────────
 
 class SitemapIndexer:
-    def __init__(self, config_file: str, es_host: str, type_of: str):
+    def __init__(self, config_file: str, es_host: Optional[str], type_of: str):
         self.cfg = read_from_config_file(config_file)
 
         # Indexer options (config/env overrideable; sensible defaults)
@@ -69,7 +69,16 @@ class SitemapIndexer:
         self.refresh    = str(_cfg_get(self.cfg, "refresh", "false")).lower() in ("1", "true", "yes", "on")
         self.dry_run    = str(_cfg_get(self.cfg, "dry_run", "false")).lower() in ("1", "true", "yes", "on")
 
-        self.es = ElasticSearchIndexer(es_host, self.index_name)
+        # Read ES credentials from config; CLI --es_host overrides config host if provided
+        es_cfg = self.cfg.get("elasticsearch", {}) if isinstance(self.cfg, dict) else {}
+        self.es = ElasticSearchIndexer(
+            es_host or es_cfg.get("host"),
+            self.index_name,
+            es_api_key=es_cfg.get("api_key"),
+            es_username=es_cfg.get("username"),
+            es_password=es_cfg.get("password"),
+            es_cloud_id=es_cfg.get("cloud_id"),
+        )
         self.type_of = type_of
         self.fetcher = FetchSitemapFromSite(self.cfg)
 
@@ -140,9 +149,9 @@ class SitemapIndexer:
 
 @click.command()
 @click.option("--config_file", "-c", type=click.Path(exists=True), required=True, help="Configuration file")
-@click.option("--es_host", "-es", type=str, required=True, help="Elasticsearch host")
+@click.option("--es_host", "-es", type=str, required=False, help="Elasticsearch host (overrides config)")
 @click.option("--type_of", "-t", type=str, required=True, help="Update or create an index")
-def create_data(config_file: str, es_host: str, type_of: str):
+def create_data(config_file: str, es_host: Optional[str], type_of: str):
     idx = SitemapIndexer(config_file, es_host, type_of)
     idx.build_and_index()
 

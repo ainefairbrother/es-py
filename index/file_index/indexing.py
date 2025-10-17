@@ -18,7 +18,7 @@ other modules.
 
 import click
 import json
-from typing import Any
+from typing import Any, Optional
 from elasticsearch.helpers import BulkIndexError
 from index.elasticsearch_indexer import ElasticSearchIndexer
 from .fetch_information_from_db import FetchFileFromDB
@@ -40,12 +40,12 @@ json_file = "index/file_index/file.json"
 class FileIndexer:
     """Indexer for the `file` index."""
 
-    def __init__(self, config_file: str, es_host: str, type_of: str):
+    def __init__(self, config_file: str, es_host: Optional[str], type_of: str):
         """Initialise the indexer.
 
         Args:
             config_file (str): Path to the configuration file with DB credentials.
-            es_host (str): Elasticsearch host (e.g., "http://localhost:9200").
+            es_host (str | None): Elasticsearch host (e.g., "http://localhost:9200"). Optional—overrides config.
             type_of (str): Operation type, either "create" or "update".
         """
         self.config_file = config_file
@@ -54,6 +54,7 @@ class FileIndexer:
         self._data = None
         self._fetcher = None
         self._indexer = None
+        self._es_cfg = None
 
     @property
     def data(self):
@@ -85,7 +86,16 @@ class FileIndexer:
             ElasticSearchIndexer: Wrapper used for index operations.
         """
         if self._indexer is None:
-            self._indexer = ElasticSearchIndexer(self.es_host, "file")
+            if self._es_cfg is None:
+                self._es_cfg = self.data.get("elasticsearch", {}) if isinstance(self.data, dict) else {}
+            self._indexer = ElasticSearchIndexer(
+                self.es_host or self._es_cfg.get("host"),
+                "file",
+                es_api_key=self._es_cfg.get("api_key"),
+                es_username=self._es_cfg.get("username"),
+                es_password=self._es_cfg.get("password"),
+                es_cloud_id=self._es_cfg.get("cloud_id"),
+            )
         return self._indexer
 
     def load_json_file(self) -> dict[str, Any]:
@@ -171,16 +181,16 @@ class FileIndexer:
     help="Configuration file",
     required=True,
 )
-@click.option("--es_host", "-es", type=str, help="ElasticSearch host", required=True)
+@click.option("--es_host", "-es", type=str, help="ElasticSearch host", required=False)
 @click.option(
     "--type_of", "-t", type=str, help="Update or create an index", required=True
 )
-def create_data(config_file: str, es_host: str, type_of: str):
+def create_data(config_file: str, es_host: Optional[str], type_of: str):
     """CLI entry point to build and index file documents.
 
     Args:
         config_file (str): Path to configuration file with DB connection details.
-        es_host (str): Elasticsearch host URL.
+        es_host (str | None): Elasticsearch host URL (overrides config).
         type_of (str): Operation type, either "create" or "update".
     """
     file_indexer = FileIndexer(config_file, es_host, type_of)
