@@ -18,7 +18,8 @@ other modules (see `run()`).
 
 import click
 import json
-from typing import Any
+import configparser
+from typing import Any, Optional, Dict
 from index.elasticsearch_indexer import ElasticSearchIndexer
 from index.population_index.fetch_information_from_db import PopulationDetailsFetcher
 from index.config_read import read_from_config_file
@@ -35,11 +36,27 @@ json_file = "index/population_index/populations_mappings.json"
 # Indexer
 # ──────────────────────────────────────────────────────────────
 
+def _read_es_from_config(config_file: str) -> Dict[str, str]:
+    """Optionally read ES connection from [elasticsearch] section in config.ini."""
+    cfg = configparser.ConfigParser()
+    cfg.read(config_file)
+    if not cfg.has_section("elasticsearch"):
+        return {}
+    sec = cfg["elasticsearch"]
+    out = {
+        "es_host": sec.get("host", "").strip() or None,
+        "es_cloud_id": sec.get("cloud_id", "").strip() or None,
+        "es_api_key": sec.get("api_key", "").strip() or None,
+        "es_username": sec.get("username", "").strip() or None,
+        "es_password": sec.get("password", "").strip() or None,
+    }
+    return {k: v for k, v in out.items() if v}
+
 
 class PopulationIndexer:
     """Indexer for the `population` index."""
 
-    def __init__(self, config_file: str, es_host: str, type_of: str):
+    def __init__(self, config_file: str, es_host: Optional[str], type_of: str):
         """Initialise the indexer.
 
         Args:
@@ -52,7 +69,20 @@ class PopulationIndexer:
         self.type_of = type_of
         self.data = read_from_config_file(config_file)
         self.fetcher = PopulationDetailsFetcher(self.data)
-        self.indexer = ElasticSearchIndexer(es_host, "population")
+
+        # Prefer explicit es_host if provided, otherwise read from [elasticsearch] or env.
+        es_cfg = _read_es_from_config(config_file)
+        if self.es_host:
+            es_cfg["es_host"] = self.es_host  # CLI override takes precedence
+
+        self.indexer = ElasticSearchIndexer(
+            es_cfg.get("es_host"),
+            "population",
+            es_api_key=es_cfg.get("es_api_key"),
+            es_username=es_cfg.get("es_username"),
+            es_password=es_cfg.get("es_password"),
+            es_cloud_id=es_cfg.get("es_cloud_id"),
+        )
 
     def load_json_file(self) -> dict[str, Any]:
         """Load index settings and mappings JSON.
@@ -121,9 +151,9 @@ class PopulationIndexer:
 
 @click.command()
 @click.option("--config_file", "-c", type=click.Path(exists=True), required=True)
-@click.option("--es_host", "-es", type=str, required=True)
+@click.option("--es_host", "-es", type=str, required=False, envvar="ES_HOST")
 @click.option("--type_of", "-t", type=str, required=True)
-def create_data(config_file: str, es_host: str, type_of: str):
+def create_data(config_file: str, es_host: Optional[str], type_of: str):
     """CLI entry point to build and index population documents.
 
     Args:
@@ -149,7 +179,7 @@ if __name__ == "__main__":
 # ──────────────────────────────────────────────────────────────
 
 
-# Enables programmatic use (from main.py)
+# Enables programmatic use
 def run(config_file, es_host, type_of):
     """Programmatic entry point mirroring the CLI behaviour.
 
