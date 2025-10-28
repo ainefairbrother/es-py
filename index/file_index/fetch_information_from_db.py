@@ -69,6 +69,37 @@ class FetchFileFromDB:
 
         return files
 
+    def fetch_files_to_remove(self) -> list[int]:
+        """Fetch file_ids that should be removed from Elasticsearch.
+
+        These are files which are currently marked as indexed_in_elasticsearch
+        but are no longer eligible (neither foreign_file nor in_current_tree).
+        """
+        fetch_old_files_sql = """
+        SELECT f.file_id FROM file f
+        WHERE f.foreign_file IS NOT TRUE
+        AND f.in_current_tree IS NOT TRUE
+        AND f.indexed_in_elasticsearch IS TRUE
+        ORDER BY file_id
+        """
+
+        db = mysql.connector.connect(
+            host=self.db_config["host"],
+            port=self.db_config["port"],
+            user=self.db_config["user"],
+            database=self.db_config["database"],
+            password=self.db_config["password"],
+        )
+
+        cursor = db.cursor()
+        cursor.execute(fetch_old_files_sql)
+        rows = cursor.fetchall()
+        cursor.close()
+        db.close()
+
+        # rows are [(file_id,), ...] so flatten to [file_id, ...]
+        return [r[0] for r in rows]
+
     def preload_data(self, file_ids: list[int]) -> tuple[defaultdict, defaultdict]:
         """Preload related data to reduce DB round-trips.
 
@@ -127,33 +158,34 @@ class FetchFileFromDB:
         db.close()
         return dc_map, sp_map
 
-    ## FLAG flipper - not implemented yet
-    # def update_elasticsearch_file(self) -> list[tuple]:
-    #     """Update the `indexed_in_elasticsearch` column.
+    def update_elasticsearch_file(self) -> list[tuple]:
+        """Update the `indexed_in_elasticsearch` column.
 
-    #     Sets `indexed_in_elasticsearch = 1` for files where
-    #     `(foreign_file IS TRUE OR in_current_tree IS TRUE)`.
+        Sets `indexed_in_elasticsearch = 1` for files where
+        `(foreign_file IS TRUE OR in_current_tree IS TRUE)`.
 
-    #     Returns:
-    #         list[tuple]: A list of rows from the DB (not used here).
-    #     """
-    #     update_elasticsearch_sql = """
-    #     UPDATE file SET indexed_in_elasticsearch = (foreign_file IS TRUE OR in_current_tree IS TRUE)
-    #     """
+        Returns:
+            list[tuple]: A list of rows from the DB (not used here).
+        """
+        update_elasticsearch_sql = """
+        UPDATE file SET indexed_in_elasticsearch = (foreign_file IS TRUE OR in_current_tree IS TRUE)
+        """
 
-    #     db = mysql.connector.connect(
-    #         host=self.db_config["host"],
-    #         port=self.db_config["port"],
-    #         user=self.db_config["user"],
-    #         database=self.db_config["database"],
-    #         password=self.db_config["password"],
-    #     )
+        db = mysql.connector.connect(
+            host=self.db_config["host"],
+            port=self.db_config["port"],
+            user=self.db_config["user"],
+            database=self.db_config["database"],
+            password=self.db_config["password"],
+        )
 
-    #     cursor = db.cursor()
-    #     cursor.execute(update_elasticsearch_sql)
-    #     db.commit()
-    #     cursor.close()
-    #     db.close()
+        cursor = db.cursor()
+        cursor.execute(update_elasticsearch_sql)
+        db.commit()
+        cursor.close()
+        db.close()
+
+        return []
 
     def populate_the_dictionary(
         self, row: tuple, dc_map: defaultdict, sp_map: defaultdict
