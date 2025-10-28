@@ -126,6 +126,10 @@ class FileIndexer:
             else:
                 self.indexer.bulk_index(actions)
                 click.echo("Bulk indexing successful")
+
+            # keep indexed_in_elasticsearch db column in sync with ES
+            self.fetcher.update_elasticsearch_file()
+
         except BulkIndexError as e:
             click.echo("Bulk indexing failed")
             for error in e.errors:
