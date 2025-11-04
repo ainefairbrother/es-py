@@ -11,6 +11,7 @@ first bulk) and 'update' mode (bulk only).
 
 import click, json, hashlib, os
 from typing import Any, Optional
+import time
 from urllib.parse import urlsplit, urlunsplit
 from index.elasticsearch_indexer import ElasticSearchIndexer
 from index.config_read import read_from_config_file
@@ -67,7 +68,6 @@ class SitemapIndexer:
         self.batch_size = int(_cfg_get(self.cfg, "batch_size", 1000))
         self.max_docs   = int(_cfg_get(self.cfg, "max_docs", 0)) or None
         self.refresh    = str(_cfg_get(self.cfg, "refresh", "false")).lower() in ("1", "true", "yes", "on")
-        self.dry_run    = str(_cfg_get(self.cfg, "dry_run", "false")).lower() in ("1", "true", "yes", "on")
 
         es_cfg = (self.cfg.get("elasticsearch") or {})
         self.es = ElasticSearchIndexer(
@@ -92,41 +92,42 @@ class SitemapIndexer:
         self.es.create_index(spec["settings"], spec["mappings"])
 
     def build_and_index(self):
+        t0 = time.time()
         do_create = (self.type_of == "create")
+        click.echo(f"[info] Index: {self.index_name} — mode: {self.type_of}")
 
         # Materialize docs once so we can announce a precise count beforehand.
         rows = list(self.fetcher.iter_docs())
         if self.max_docs:
             rows = rows[: self.max_docs]
 
-        click.echo(f"Preparing {len(rows)} sitemap document(s) to index...")
+        click.echo(f"[info] Found {len(rows)} candidate sitemap document(s) to index")
+        click.echo("[info] Preparing bulk actions…")
 
         actions = []
         seen_urls: set[str] = set()
         n_indexed = 0
 
-        for doc in rows:
+        for i, doc in enumerate(rows, 1):
             url = _canon_url(doc["url"])
             if url in seen_urls:
                 continue
             seen_urls.add(url)
 
             _id = _doc_id_from_url(url)
-            if not self.dry_run:
-                actions.append(self.es.index_data(doc, _id, self.type_of))
-                if len(actions) >= self.batch_size:
-                    if do_create:
-                        self._create_index()
-                        do_create = False
-                    self.es.bulk_index(actions)
-                    n_indexed += len(actions)
-                    actions.clear()
-            else:
-                # Dry-run: pretend we indexed it (no network calls).
-                n_indexed += 1
+            actions.append(self.es.index_data(doc, _id, self.type_of))
+
+            if len(actions) >= self.batch_size:
+                if do_create:
+                    self._create_index()
+                    do_create = False
+                self.es.bulk_index(actions)
+                n_indexed += len(actions)
+                actions.clear()
+                click.echo(f"[info] Flushed batch @ {i}/{len(rows)} (indexed so far: {n_indexed})")
 
         # Flush any remaining actions
-        if not self.dry_run and actions:
+        if actions:
             if do_create:
                 self._create_index()
                 do_create = False
@@ -135,14 +136,13 @@ class SitemapIndexer:
             actions.clear()
 
         # Optional refresh (best-effort)
-        if self.refresh and not self.dry_run:
+        if self.refresh:
             try:
-                # If your ElasticSearchIndexer doesn't implement refresh_index, this is a no-op due to try/except
                 self.es.refresh_index()  # type: ignore[attr-defined]
             except Exception:
                 pass
 
-        click.echo(f"Bulk indexing successful — indexed={n_indexed} (index={self.index_name})")
+        click.echo(f"[ok] Bulk indexing successful — indexed={n_indexed} (index={self.index_name}) in {time.time()-t0:.1f}s")
 
 # ──────────────────────────────────────────────────────────────
 # CLI

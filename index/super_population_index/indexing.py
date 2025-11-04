@@ -15,6 +15,7 @@ This module:
 
 import click
 import json
+import time
 from typing import Any, Optional
 from index.elasticsearch_indexer import ElasticSearchIndexer
 from .fetch_information_from_db import FetchSPFromDB
@@ -74,21 +75,38 @@ class SuperPopulationIndexer:
 
     def build_and_index_superpopulation(self):
         """Build and bulk index superpopulation documents."""
+        t0 = time.time()
+        click.echo(f"[info] Index: superpopulation — mode: {self.type_of}")
+
+        rows = self.fetcher.fetch_information_from_db()
+        total_rows = len(rows)
+        click.echo(f"[info] Found {total_rows} candidate document(s) from DB")
+
+        click.echo("[info] Preparing bulk actions…")
         actions = []
-        superpopulation = self.fetcher.fetch_information_from_db()
-        for row in superpopulation:
+        for i, row in enumerate(rows, 1):
             elastic_id = row[0]
             super_pop_data = self.fetcher.build_superpopulation_info(row)
             action = self.indexer.index_data(super_pop_data, elastic_id, self.type_of)
             actions.append(action)
+            if i % 500 == 0:
+                click.echo(f"[info] Prepared {i}/{total_rows} actions…")
+
+        click.echo(f"[info] Prepared {len(actions)} action(s)")
+        if not actions:
+            click.echo("[info] Nothing to do — exiting")
+            return
 
         if self.type_of == "create":
             if self.create_superpopulation_index() is True:
                 self.indexer.bulk_index(actions)
-                click.echo("Bulk indexing successful")
+                click.echo(f"[ok] Bulk indexing successful ({len(actions)} docs) in {time.time()-t0:.1f}s")
+            else:
+                self.indexer.bulk_index(actions)
+                click.echo(f"[ok] Index existed; bulk indexing successful ({len(actions)} docs) in {time.time()-t0:.1f}s")
         else:
             self.indexer.bulk_index(actions)
-            click.echo("Bulk indexing successful")
+            click.echo(f"[ok] Bulk indexing successful ({len(actions)} docs) in {time.time()-t0:.1f}s")
 
 
 # ──────────────────────────────────────────────────────────────

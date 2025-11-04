@@ -18,6 +18,8 @@ other modules (see `run()`).
 
 import click
 import json
+import time
+from elasticsearch.helpers import BulkIndexError
 from typing import Any, Optional
 from index.elasticsearch_indexer import ElasticSearchIndexer
 from index.population_index.fetch_information_from_db import PopulationDetailsFetcher
@@ -91,20 +93,33 @@ class PopulationIndexer:
 
     def build_and_index_population_info(self):
         """Bulk index population documents."""
+        t0 = time.time()
+        click.echo(f"[info] Index: population — mode: {self.type_of}")
+
         pop_info = self.fetcher.fetch_population()
+        total_rows = len(pop_info)
+        click.echo(f"[info] Found {total_rows} candidate document(s) from DB")
+        if not pop_info:
+            click.echo("[info] Nothing to do — exiting")
+            return
+
         pop_ids = self.fetcher.fetch_population_ids()
-        actions = []
         dc_map = self.fetcher.fetch_data_collection_details(pop_ids)
         overlap_map = self.fetcher.fetch_overlap_population_details(pop_ids)
-        for row in pop_info:
+
+        click.echo("[info] Preparing bulk actions…")
+        actions = []
+        skipped_no_code = 0
+
+        for i, row in enumerate(pop_info, 1):
             code = row[5]
             if not code:
+                skipped_no_code += 1
                 continue
 
-            population_data = self.fetcher.build_population_info(
-                row, dc_map, overlap_map
-            )
+            population_data = self.fetcher.build_population_info(row, dc_map, overlap_map)
 
+            # Flatten analysis group buckets into a single helper array, as before
             flat = []
             for dc in population_data.get("dataCollections", []):
                 for key in ("variants", "sequence", "alignment"):
@@ -113,16 +128,38 @@ class PopulationIndexer:
                         flat.extend(vals)
             population_data["dataCollectionsAnalysisGroups"] = flat
 
-            action = self.indexer.index_data(population_data, code, self.type_of)
-            actions.append(action)
+            actions.append(self.indexer.index_data(population_data, code, self.type_of))
 
-        if self.type_of == "create":
-            if self.create_population_index() is True:
+            if i % 500 == 0:
+                click.echo(f"[info] Prepared {i}/{total_rows} actions…")
+
+        click.echo(f"[info] Prepared {len(actions)} action(s); skipped {skipped_no_code} row(s) without a population code")
+
+        if not actions:
+            click.echo("[warn] No actions to send — exiting")
+            return
+
+        try:
+            if self.type_of == "create":
+                if self.create_population_index() is True:
+                    self.indexer.bulk_index(actions)
+                    click.echo(f"[ok] Bulk indexing successful ({len(actions)} docs) in {time.time()-t0:.1f}s")
+                else:
+                    # Index already exists; still proceed to bulk update
+                    self.indexer.bulk_index(actions)
+                    click.echo(f"[ok] Index existed; bulk indexing successful ({len(actions)} docs) in {time.time()-t0:.1f}s")
+            else:
                 self.indexer.bulk_index(actions)
-                click.echo("Bulk indexing successful")
-        else:
-            self.indexer.bulk_index(actions)
-            click.echo("Bulk indexing successful")
+                click.echo(f"[ok] Bulk indexing successful ({len(actions)} docs) in {time.time()-t0:.1f}s")
+        except BulkIndexError as e:
+            click.echo("[error] Bulk indexing failed")
+            errs = getattr(e, "errors", [])
+            if errs:
+                click.echo(f"[error] Items with errors: {len(errs)}")
+                for err in errs[:5]:
+                    click.echo(err)
+                if len(errs) > 5:
+                    click.echo(f"[error] … and {len(errs)-5} more")
 
 
 # ──────────────────────────────────────────────────────────────

@@ -19,6 +19,8 @@ other modules.
 import click
 from typing import Any, Optional
 import json
+import time
+from elasticsearch.helpers import BulkIndexError
 from index.elasticsearch_indexer import ElasticSearchIndexer
 from .fetch_information_from_db import FetchAGFromDB
 from index.config_read import read_from_config_file
@@ -85,21 +87,58 @@ class AnalysisGroupIndexer:
 
     def build_and_index_analysisgroup(self):
         """Build and bulk index analysis group documents."""
-        actions = []
-        analysis_group = self.fetcher.fetch_information_from_DB()
-        for row in analysis_group:
-            code = row[1]
-            ag_data = self.fetcher.build_ag_info(row)
-            action = self.indexer.index_data(ag_data, code, self.type_of)
-            actions.append(action)
+        t0 = time.time()
+        click.echo(f"[info] Index: analysis_group — mode: {self.type_of}")
 
-        if self.type_of == "create":
-            if self.create_analysis_group_index() is True:
+        rows = self.fetcher.fetch_information_from_DB()
+        total_rows = len(rows)
+        click.echo(f"[info] Found {total_rows} candidate document(s) from DB")
+        if not rows:
+            click.echo("[info] Nothing to do — exiting")
+            return
+
+        actions = []
+        skipped_no_code = 0
+
+        click.echo("[info] Preparing bulk actions…")
+        for i, row in enumerate(rows, 1):
+            code = row[1]  # analysis_group code
+            if not code:
+                skipped_no_code += 1
+                continue
+
+            ag_data = self.fetcher.build_ag_info(row)
+            actions.append(self.indexer.index_data(ag_data, code, self.type_of))
+
+            if i % 500 == 0:
+                click.echo(f"[info] Prepared {i}/{total_rows} actions…")
+
+        click.echo(f"[info] Prepared {len(actions)} action(s); skipped {skipped_no_code} row(s) without a code")
+        if not actions:
+            click.echo("[warn] No actions to send — exiting")
+            return
+
+        try:
+            if self.type_of == "create":
+                if self.create_analysis_group_index() is True:
+                    self.indexer.bulk_index(actions)
+                    click.echo(f"[ok] Bulk indexing successful ({len(actions)} docs) in {time.time()-t0:.1f}s")
+                else:
+                    # Index already exists; still proceed to bulk index
+                    self.indexer.bulk_index(actions)
+                    click.echo(f"[ok] Index existed; bulk indexing successful ({len(actions)} docs) in {time.time()-t0:.1f}s")
+            else:
                 self.indexer.bulk_index(actions)
-                click.echo("Bulk indexing successful")
-        else:
-            self.indexer.bulk_index(actions)
-            click.echo("Bulk indexing successful")
+                click.echo(f"[ok] Bulk indexing successful ({len(actions)} docs) in {time.time()-t0:.1f}s")
+        except BulkIndexError as e:
+            click.echo("[error] Bulk indexing failed")
+            errs = getattr(e, "errors", [])
+            if errs:
+                click.echo(f"[error] Items with errors: {len(errs)}")
+                for err in errs[:5]:
+                    click.echo(err)
+                if len(errs) > 5:
+                    click.echo(f"[error] … and {len(errs)-5} more")
 
 
 # ──────────────────────────────────────────────────────────────

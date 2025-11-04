@@ -19,6 +19,7 @@ other modules (see `create_data()`).
 
 import click
 import json
+import time
 from typing import Any, Optional
 from index.elasticsearch_indexer import ElasticSearchIndexer
 from .fetch_information_from_db import SampleDetailsFetcher
@@ -131,15 +132,47 @@ class SampleIndexer:
 
     def build_and_index_sample_info(self):
         """Bulk index sample documents."""
-        actions = self.generate_actions()
+        t0 = time.time()
+        click.echo(f"[info] Index: sample — mode: {self.type_of}")
+
+        # We fetch once to report an accurate candidate count (minimal diff: we let
+        # generate_actions() fetch again as before to keep structure unchanged).
+        try:
+            preview_rows = self.fetcher.fetch_samples()
+            total_rows = len(preview_rows)
+            click.echo(f"[info] Found {total_rows} candidate document(s) from DB")
+        except Exception:
+            # If preview fails, continue without count
+            total_rows = None
+            click.echo("[warn] Could not pre-count candidates; continuing…")
+
+        click.echo("[info] Preparing bulk actions…")
+        actions = []
+        for i, action in enumerate(self.generate_actions(), 1):
+            actions.append(action)
+            if i % 500 == 0:
+                click.echo(f"[info] Prepared {i}{f'/{total_rows}' if total_rows is not None else ''} actions…")
+
+        click.echo(f"[info] Prepared {len(actions)} action(s)")
+        if not actions:
+            click.echo("[info] Nothing to do — exiting")
+            try:
+                self.fetcher.close()
+            except Exception:
+                pass
+            return
+
         try:
             if self.type_of == "create":
                 if self.create_sample_index() is True:
                     self.indexer.bulk_index(actions)
-                    click.echo("Bulk indexing successful")
+                    click.echo(f"[ok] Bulk indexing successful ({len(actions)} docs) in {time.time()-t0:.1f}s")
+                else:
+                    self.indexer.bulk_index(actions)
+                    click.echo(f"[ok] Index existed; bulk indexing successful ({len(actions)} docs) in {time.time()-t0:.1f}s")
             else:
                 self.indexer.bulk_index(actions)
-                click.echo("Bulk indexing successful")
+                click.echo(f"[ok] Bulk indexing successful ({len(actions)} docs) in {time.time()-t0:.1f}s")
         finally:
             # Ensure DB connection is closed even if bulk indexing raises
             try:

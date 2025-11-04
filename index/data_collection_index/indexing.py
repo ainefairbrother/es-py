@@ -19,6 +19,7 @@ other modules (see `run()`).
 import click
 from typing import Any, Optional
 import json
+import time
 from index.elasticsearch_indexer import ElasticSearchIndexer
 from .fetch_information_from_db import DCDetailsFetcher
 from index.config_read import read_from_config_file
@@ -103,26 +104,58 @@ class DataCollectionsIndexer:
         Raises:
             BulkIndexError: If the bulk indexing operation fails.
         """
+        t0 = time.time()
+        click.echo(f"[info] Index: data_collections — mode: {self.type_of}")
+
+        rows = self.fetcher.fetch_datacollections()
+        total_rows = len(rows)
+        click.echo(f"[info] Found {total_rows} candidate document(s) from DB")
+        if not rows:
+            click.echo("[info] Nothing to do — exiting")
+            return
+
         actions = []
-        data_collection = self.fetcher.fetch_datacollections()
-        for row in data_collection:
+        skipped_no_code = 0
+
+        click.echo("[info] Preparing bulk actions…")
+        for i, row in enumerate(rows, 1):
             code = row[1]
+            if not code:
+                skipped_no_code += 1
+                continue
+
             dc_data = self.fetcher.populate_the_dictionary_structure(row)
-            action = self.indexer.index_data(dc_data, code, self.type_of)
-            actions.append(action)
+            actions.append(self.indexer.index_data(dc_data, code, self.type_of))
+
+            if i % 500 == 0:
+                click.echo(f"[info] Prepared {i}/{total_rows} actions…")
+
+        click.echo(f"[info] Prepared {len(actions)} action(s); skipped {skipped_no_code} row(s) without a code")
+        if not actions:
+            click.echo("[warn] No actions to send — exiting")
+            return
 
         try:
             if self.type_of == "create":
                 if self.create_data_collections_index() is True:
                     self.indexer.bulk_index(actions)
-                    click.echo("Bulk indexing successful")
+                    click.echo(f"[ok] Bulk indexing successful ({len(actions)} docs) in {time.time()-t0:.1f}s")
+                else:
+                    # Index already exists; still proceed to bulk index
+                    self.indexer.bulk_index(actions)
+                    click.echo(f"[ok] Index existed; bulk indexing successful ({len(actions)} docs) in {time.time()-t0:.1f}s")
             else:
                 self.indexer.bulk_index(actions)
-                click.echo("Bulk indexing successful")
+                click.echo(f"[ok] Bulk indexing successful ({len(actions)} docs) in {time.time()-t0:.1f}s")
         except BulkIndexError as e:
-            click.echo("Bulk indexing failed")
-            for error in e.errors:
-                click.echo(error)
+            click.echo("[error] Bulk indexing failed")
+            errs = getattr(e, "errors", [])
+            if errs:
+                click.echo(f"[error] Items with errors: {len(errs)}")
+                for err in errs[:5]:
+                    click.echo(err)
+                if len(errs) > 5:
+                    click.echo(f"[error] … and {len(errs)-5} more")
 
 
 # ──────────────────────────────────────────────────────────────

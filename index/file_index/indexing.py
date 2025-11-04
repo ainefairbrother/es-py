@@ -19,6 +19,7 @@ other modules.
 import click
 import json
 from typing import Any, Optional
+import time
 from elasticsearch.helpers import BulkIndexError
 from index.elasticsearch_indexer import ElasticSearchIndexer
 from .fetch_information_from_db import FetchFileFromDB
@@ -107,33 +108,57 @@ class FileIndexer:
 
     def build_and_index_file_info(self):
         """Build and bulk-index all eligible files."""
+        t0 = time.time()
+        click.echo(f"[info] Index: file — mode: {self.type_of}")
+
         rows = self.fetcher.fetch_files()
+        total_rows = len(rows)
+        click.echo(f"[info] Found {total_rows} candidate document(s) from DB")
         if not rows:
-            click.echo("No file documents eligible for indexing — nothing to do.")
+            click.echo("[info] Nothing to do — exiting")
             return
 
-        click.echo(f"Preparing {len(rows)} file document(s) to index...")
-        actions = list(self.generate_actions(rows))
+        click.echo("[info] Preparing bulk actions…")
+        actions = []
+        for i, action in enumerate(self.generate_actions(rows), 1):
+            actions.append(action)
+            if i % 500 == 0:
+                click.echo(f"[info] Prepared {i}/{total_rows} actions…")
+
+        click.echo(f"[info] Prepared {len(actions)} action(s)")
+        if not actions:
+            click.echo("[warn] No actions to send — exiting")
+            return
 
         try:
             if self.type_of == "create":
                 if self.create_file_index() is True:
                     self.indexer.bulk_index(actions)
-                    click.echo("Bulk indexing successful")
+                    click.echo(f"[ok] Bulk indexing successful ({len(actions)} docs) in {time.time()-t0:.1f}s")
                 else:
                     self.indexer.bulk_index(actions)
-                    click.echo("Index existed; bulk indexing successful")
+                    click.echo(f"[ok] Index existed; bulk indexing successful ({len(actions)} docs) in {time.time()-t0:.1f}s")
             else:
                 self.indexer.bulk_index(actions)
-                click.echo("Bulk indexing successful")
+                click.echo(f"[ok] Bulk indexing successful ({len(actions)} docs) in {time.time()-t0:.1f}s")
 
             # keep indexed_in_elasticsearch db column in sync with ES
-            self.fetcher.update_elasticsearch_file()
+            t_sync = time.time()
+            updated = self.fetcher.update_elasticsearch_file()
+            if isinstance(updated, int):
+                click.echo(f"[ok] DB flag sync: indexed_in_elasticsearch updated for {updated} row(s) in {time.time()-t_sync:.1f}s")
+            else:
+                click.echo(f"[ok] DB flag (indexed_in_elasticsearch) sync completed, {len(actions)} rows set to 1")
 
         except BulkIndexError as e:
-            click.echo("Bulk indexing failed")
-            for error in e.errors:
-                click.echo(error)
+            click.echo("[error] Bulk indexing failed")
+            errs = getattr(e, "errors", [])
+            if errs:
+                click.echo(f"[error] Items with errors: {len(errs)}")
+                for err in errs[:5]:
+                    click.echo(err)
+                if len(errs) > 5:
+                    click.echo(f"[error] … and {len(errs)-5} more")
 
 
 # ──────────────────────────────────────────────────────────────

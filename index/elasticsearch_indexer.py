@@ -68,10 +68,8 @@ class ElasticSearchIndexer:
             self.client.indices.create(
                 index=self.index_name, body={"settings": settings, "mappings": mappings}
             )
-            print(f"Index '{self.index_name}' created successfully.")
             return True
         except elasticsearch.ApiError as e:
-            print(f"Failed to create index: {e}")
             return False
 
     def index_data(self, data: dict[str, Any], doc_id: str, action_type: str) -> dict[str, Any]:
@@ -87,7 +85,6 @@ class ElasticSearchIndexer:
         except elasticsearch.BadRequestError as e:
             raise Exception(f"Error during bulk indexing: {str(e)}")
         except BulkIndexError as e:
-            print("Bulk indexing failed")
             for err in e.errors:
                 print(err)
             raise
