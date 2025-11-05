@@ -41,7 +41,7 @@ json_file = "index/analysis_group_index/analysis_group.json"
 class AnalysisGroupIndexer:
     """Indexer for the `analysis_group` index."""
 
-    def __init__(self, config_file: str, es_host: Optional[str], type_of: str):
+    def __init__(self, config_file: str, es_host: Optional[str], type_of: str, dry_run: bool = False):
         """Initialise the indexer.
 
         Args:
@@ -50,6 +50,7 @@ class AnalysisGroupIndexer:
             type_of (str): Operation type, either "create" or "update".
         """
         self.type_of = type_of
+        self.dry_run = bool(dry_run)
         self.data = read_from_config_file(config_file)
         self.fetcher = FetchAGFromDB(self.data)
 
@@ -88,7 +89,7 @@ class AnalysisGroupIndexer:
     def build_and_index_analysisgroup(self):
         """Build and bulk index analysis group documents."""
         t0 = time.time()
-        click.echo(f"[info] Index: analysis_group — mode: {self.type_of}")
+        click.echo(f"[info] Index: analysis_group — mode: {self.type_of} — dry_run: {'yes' if self.dry_run else 'no'}")
 
         rows = self.fetcher.fetch_information_from_DB()
         total_rows = len(rows)
@@ -120,14 +121,24 @@ class AnalysisGroupIndexer:
 
         try:
             if self.type_of == "create":
-                if self.create_analysis_group_index() is True:
-                    self.indexer.bulk_index(actions)
-                    click.echo(f"[ok] Bulk indexing successful ({len(actions)} docs) in {time.time()-t0:.1f}s")
-                else:
-                    # Index already exists; still proceed to bulk index
-                    self.indexer.bulk_index(actions)
-                    click.echo(f"[ok] Index existed; bulk indexing successful ({len(actions)} docs) in {time.time()-t0:.1f}s")
+                if self.dry_run:
+                    click.echo("[dry-run] Would drop & recreate index from on-disk settings/mappings")
+                    click.echo(f"[dry-run] Would upsert {len(actions)} document(s)")
+                    return
+                spec = self.load_json_file()
+                click.echo("[info] Dropping & recreating index…")
+                self.indexer.ensure_fresh_index(spec["settings"], spec["mappings"])
+                self.indexer.bulk_index(actions)
+                click.echo(f"[ok] Bulk indexing successful ({len(actions)} docs) in {time.time()-t0:.1f}s")
             else:
+                if self.dry_run:
+                    click.echo("[dry-run] Would verify index existence; if missing, exit with warning")
+                    click.echo(f"[dry-run] Would upsert {len(actions)} document(s)")
+                    return
+                if not self.indexer.index_exists():
+                    click.echo("[warn] Update requested but index 'analysis_group' does not exist. No changes made. Run once with --type_of=create.")
+                    return
+                click.echo("[info] Upserting into existing index…")
                 self.indexer.bulk_index(actions)
                 click.echo(f"[ok] Bulk indexing successful ({len(actions)} docs) in {time.time()-t0:.1f}s")
         except BulkIndexError as e:
@@ -158,9 +169,10 @@ class AnalysisGroupIndexer:
 @click.option(
     "--type_of", "-t", type=str, help="Update or create an index", required=True
 )
-def create_data(config_file: str, es_host: Optional[str], type_of: str):
+@click.option("--dry_run/--no-dry_run", default=False, help="Log actions without touching Elasticsearch")
+def create_data(config_file: str, es_host: Optional[str], type_of: str, dry_run: bool):
     """CLI entry point to build and index analysis_group documents."""
-    ag_indexer = AnalysisGroupIndexer(config_file, es_host, type_of)
+    ag_indexer = AnalysisGroupIndexer(config_file, es_host, type_of, dry_run=dry_run)
     ag_indexer.build_and_index_analysisgroup()
 
 

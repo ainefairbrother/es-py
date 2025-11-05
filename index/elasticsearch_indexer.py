@@ -93,3 +93,27 @@ class ElasticSearchIndexer:
 
     def delete_data(self, doc_id: str) -> Dict[str, Any]:
         return {"_op_type": "delete", "_index": self.index_name, "_id": doc_id}
+    
+    def delete_index(self) -> None:
+        # safe delete; ignore missing
+        try:
+            self.client.indices.delete(index=self.index_name, ignore_unavailable=True)
+        except Exception:
+            pass
+
+    def ensure_fresh_index(self, settings: dict, mappings: dict) -> None:
+        # drop then (re)create
+        self.delete_index()
+        self.create_index(settings, mappings)
+
+    def index_exists(self) -> bool:
+        try:
+            return bool(self.client.indices.exists(index=self.index_name))
+        except Exception:
+            return False
+
+    def refresh_index(self) -> None:
+        try:
+            self.client.indices.refresh(index=self.index_name)
+        except Exception:
+            pass

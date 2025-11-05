@@ -41,7 +41,7 @@ json_file = "index/sample_index/sample.json"
 class SampleIndexer:
     """Indexer for the `sample` index."""
 
-    def __init__(self, config_file: str, es_host: Optional[str], type_of: str):
+    def __init__(self, config_file: str, es_host: Optional[str], type_of: str, dry_run: bool = False):
         """Initialise the Sample indexer.
 
         Args:
@@ -52,6 +52,7 @@ class SampleIndexer:
         self.config_file = config_file
         self.es_host = es_host
         self.type_of = type_of
+        self.dry_run = bool(dry_run)
         self._data = None
         self._fetcher = None
         self._indexer = None
@@ -133,7 +134,7 @@ class SampleIndexer:
     def build_and_index_sample_info(self):
         """Bulk index sample documents."""
         t0 = time.time()
-        click.echo(f"[info] Index: sample — mode: {self.type_of}")
+        click.echo(f"[info] Index: sample — mode: {self.type_of} — dry_run: {'yes' if self.dry_run else 'no'}")
 
         # We fetch once to report an accurate candidate count (minimal diff: we let
         # generate_actions() fetch again as before to keep structure unchanged).
@@ -142,7 +143,6 @@ class SampleIndexer:
             total_rows = len(preview_rows)
             click.echo(f"[info] Found {total_rows} candidate document(s) from DB")
         except Exception:
-            # If preview fails, continue without count
             total_rows = None
             click.echo("[warn] Could not pre-count candidates; continuing…")
 
@@ -164,17 +164,27 @@ class SampleIndexer:
 
         try:
             if self.type_of == "create":
-                if self.create_sample_index() is True:
-                    self.indexer.bulk_index(actions)
-                    click.echo(f"[ok] Bulk indexing successful ({len(actions)} docs) in {time.time()-t0:.1f}s")
-                else:
-                    self.indexer.bulk_index(actions)
-                    click.echo(f"[ok] Index existed; bulk indexing successful ({len(actions)} docs) in {time.time()-t0:.1f}s")
+                if self.dry_run:
+                    click.echo("[dry-run] Would drop & recreate index from on-disk settings/mappings")
+                    click.echo(f"[dry-run] Would upsert {len(actions)} document(s)")
+                    return
+                spec = self.load_json_file()
+                click.echo("[info] Dropping & recreating index…")
+                self.indexer.ensure_fresh_index(spec["settings"], spec["mappings"])
+                self.indexer.bulk_index(actions)
+                click.echo(f"[ok] Bulk indexing successful ({len(actions)} docs) in {time.time()-t0:.1f}s")
             else:
+                if self.dry_run:
+                    click.echo("[dry-run] Would verify index existence; if missing, exit with warning")
+                    click.echo(f"[dry-run] Would upsert {len(actions)} document(s)")
+                    return
+                if not self.indexer.index_exists():
+                    click.echo("[warn] Update requested but index 'sample' does not exist. No changes made. Run once with --type_of=create.")
+                    return
+                click.echo("[info] Upserting into existing index…")
                 self.indexer.bulk_index(actions)
                 click.echo(f"[ok] Bulk indexing successful ({len(actions)} docs) in {time.time()-t0:.1f}s")
         finally:
-            # Ensure DB connection is closed even if bulk indexing raises
             try:
                 self.fetcher.close()
             except Exception:
@@ -198,9 +208,10 @@ class SampleIndexer:
 @click.option(
     "--type_of", "-t", type=str, help="Update or create an index", required=True
 )
-def create_data(config_file: str, es_host: Optional[str], type_of: str):
+@click.option("--dry_run/--no-dry_run", default=False, help="Log actions without touching Elasticsearch")
+def create_data(config_file: str, es_host: Optional[str], type_of: str, dry_run: bool):
     """CLI entry point to build and (re)index the `sample` index."""
-    sample_indexer = SampleIndexer(config_file, es_host, type_of)
+    sample_indexer = SampleIndexer(config_file, es_host, type_of, dry_run=dry_run)
     sample_indexer.build_and_index_sample_info()
 
 

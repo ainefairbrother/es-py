@@ -41,7 +41,7 @@ json_file = "index/population_index/populations_mappings.json"
 class PopulationIndexer:
     """Indexer for the `population` index."""
 
-    def __init__(self, config_file: str, es_host: Optional[str], type_of: str):
+    def __init__(self, config_file: str, es_host: Optional[str], type_of: str, dry_run: bool = False):
         """Initialise the indexer.
 
         Args:
@@ -52,6 +52,7 @@ class PopulationIndexer:
         self.config_file = config_file
         self.es_host = es_host
         self.type_of = type_of
+        self.dry_run = bool(dry_run)
 
         # DB + site + elasticsearch all come from this helper
         self.data = read_from_config_file(config_file)
@@ -94,7 +95,7 @@ class PopulationIndexer:
     def build_and_index_population_info(self):
         """Bulk index population documents."""
         t0 = time.time()
-        click.echo(f"[info] Index: population — mode: {self.type_of}")
+        click.echo(f"[info] Index: population — mode: {self.type_of} — dry_run: {'yes' if self.dry_run else 'no'}")
 
         pop_info = self.fetcher.fetch_population()
         total_rows = len(pop_info)
@@ -141,14 +142,24 @@ class PopulationIndexer:
 
         try:
             if self.type_of == "create":
-                if self.create_population_index() is True:
-                    self.indexer.bulk_index(actions)
-                    click.echo(f"[ok] Bulk indexing successful ({len(actions)} docs) in {time.time()-t0:.1f}s")
-                else:
-                    # Index already exists; still proceed to bulk update
-                    self.indexer.bulk_index(actions)
-                    click.echo(f"[ok] Index existed; bulk indexing successful ({len(actions)} docs) in {time.time()-t0:.1f}s")
+                if self.dry_run:
+                    click.echo("[dry-run] Would drop & recreate index from on-disk settings/mappings")
+                    click.echo(f"[dry-run] Would upsert {len(actions)} document(s)")
+                    return
+                spec = self.load_json_file()
+                click.echo("[info] Dropping & recreating index…")
+                self.indexer.ensure_fresh_index(spec["settings"], spec["mappings"])
+                self.indexer.bulk_index(actions)
+                click.echo(f"[ok] Bulk indexing successful ({len(actions)} docs) in {time.time()-t0:.1f}s")
             else:
+                if self.dry_run:
+                    click.echo("[dry-run] Would verify index existence; if missing, exit with warning")
+                    click.echo(f"[dry-run] Would upsert {len(actions)} document(s)")
+                    return
+                if not self.indexer.index_exists():
+                    click.echo("[warn] Update requested but index 'population' does not exist. No changes made. Run once with --type_of=create.")
+                    return
+                click.echo("[info] Upserting into existing index…")
                 self.indexer.bulk_index(actions)
                 click.echo(f"[ok] Bulk indexing successful ({len(actions)} docs) in {time.time()-t0:.1f}s")
         except BulkIndexError as e:
@@ -171,9 +182,10 @@ class PopulationIndexer:
 @click.option("--config_file", "-c", type=click.Path(exists=True), required=True)
 @click.option("--es_host", "-es", type=str, required=False, help="Elasticsearch host (overrides config)")
 @click.option("--type_of", "-t", type=str, required=True)
-def create_data(config_file: str, es_host: Optional[str], type_of: str):
+@click.option("--dry_run/--no-dry_run", default=False, help="Log actions without touching Elasticsearch")
+def create_data(config_file: str, es_host: Optional[str], type_of: str, dry_run: bool):
     """CLI entry point to build and index population documents."""
-    indexer = PopulationIndexer(config_file, es_host, type_of)
+    indexer = PopulationIndexer(config_file, es_host, type_of, dry_run=dry_run)
     indexer.build_and_index_population_info()
 
 

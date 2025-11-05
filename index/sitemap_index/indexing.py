@@ -60,7 +60,7 @@ def _cfg_get(cfg: dict[str, Any], key: str, default: Any) -> Any:
 # ──────────────────────────────────────────────────────────────
 
 class SitemapIndexer:
-    def __init__(self, config_file: str, es_host: Optional[str], type_of: str):
+    def __init__(self, config_file: str, es_host: Optional[str], type_of: str, dry_run: bool = False):
         self.cfg = read_from_config_file(config_file)
 
         # Indexer options (config/env overrideable; sensible defaults)
@@ -80,23 +80,21 @@ class SitemapIndexer:
         )
 
         self.type_of = type_of
+        self.dry_run = bool(dry_run)
         self.fetcher = FetchSitemapFromSite(self.cfg)
 
     def _load_spec(self) -> dict[str, Any]:
         with open(JSON_PATH, "r") as fh:
             return json.load(fh)
 
-    def _create_index(self) -> None:
-        """Create index using on-disk spec; ignore existence result (idempotent)."""
+    def _create_fresh(self) -> None:
         spec = self._load_spec()
-        self.es.create_index(spec["settings"], spec["mappings"])
+        self.es.ensure_fresh_index(spec["settings"], spec["mappings"])
 
     def build_and_index(self):
         t0 = time.time()
-        do_create = (self.type_of == "create")
-        click.echo(f"[info] Index: {self.index_name} — mode: {self.type_of}")
+        click.echo(f"[info] Index: {self.index_name} — mode: {self.type_of} — dry_run: {'yes' if self.dry_run else 'no'}")
 
-        # Materialize docs once so we can announce a precise count beforehand.
         rows = list(self.fetcher.iter_docs())
         if self.max_docs:
             rows = rows[: self.max_docs]
@@ -106,7 +104,6 @@ class SitemapIndexer:
 
         actions = []
         seen_urls: set[str] = set()
-        n_indexed = 0
 
         for i, doc in enumerate(rows, 1):
             url = _canon_url(doc["url"])
@@ -116,33 +113,46 @@ class SitemapIndexer:
 
             _id = _doc_id_from_url(url)
             actions.append(self.es.index_data(doc, _id, self.type_of))
+            if len(actions) % self.batch_size == 0:
+                click.echo(f"[info] Prepared {len(actions)}/{len(rows)} actions so far…")
 
-            if len(actions) >= self.batch_size:
-                if do_create:
-                    self._create_index()
-                    do_create = False
-                self.es.bulk_index(actions)
-                n_indexed += len(actions)
-                actions.clear()
-                click.echo(f"[info] Flushed batch @ {i}/{len(rows)} (indexed so far: {n_indexed})")
+        click.echo(f"[info] Prepared {len(actions)} action(s)")
+        if not actions:
+            click.echo("[info] Nothing to do — exiting")
+            return
 
-        # Flush any remaining actions
-        if actions:
-            if do_create:
-                self._create_index()
-                do_create = False
-            self.es.bulk_index(actions)
-            n_indexed += len(actions)
-            actions.clear()
+        if self.type_of == "create":
+            if self.dry_run:
+                click.echo("[dry-run] Would drop & recreate index from on-disk settings/mappings")
+                click.echo(f"[dry-run] Would upsert {len(actions)} document(s) in batches of {self.batch_size}")
+                return
+            click.echo("[info] Dropping & recreating index…")
+            self._create_fresh()
+            # bulk in batches
+            for start in range(0, len(actions), self.batch_size):
+                end = start + self.batch_size
+                self.es.bulk_index(actions[start:end])
+            click.echo(f"[ok] Bulk indexing successful ({len(actions)} docs) in {time.time()-t0:.1f}s")
+        else:
+            if self.dry_run:
+                click.echo("[dry-run] Would verify index existence; if missing, exit with warning")
+                click.echo(f"[dry-run] Would upsert {len(actions)} document(s) in batches of {self.batch_size}")
+                return
+            if not self.es.index_exists():
+                click.echo(f"[warn] Update requested but index '{self.index_name}' does not exist. No changes made. Run once with --type_of=create.")
+                return
+            click.echo("[info] Upserting into existing index…")
+            for start in range(0, len(actions), self.batch_size):
+                end = start + self.batch_size
+                self.es.bulk_index(actions[start:end])
+            click.echo(f"[ok] Bulk indexing successful ({len(actions)} docs) in {time.time()-t0:.1f}s")
 
-        # Optional refresh (best-effort)
-        if self.refresh:
+        if self.refresh and not self.dry_run:
             try:
                 self.es.refresh_index()  # type: ignore[attr-defined]
             except Exception:
                 pass
 
-        click.echo(f"[ok] Bulk indexing successful — indexed={n_indexed} (index={self.index_name}) in {time.time()-t0:.1f}s")
 
 # ──────────────────────────────────────────────────────────────
 # CLI
@@ -152,8 +162,9 @@ class SitemapIndexer:
 @click.option("--config_file", "-c", type=click.Path(exists=True), required=True, help="Configuration file")
 @click.option("--es_host", "-es", type=str, required=False, help="Elasticsearch host (overrides config)")
 @click.option("--type_of", "-t", type=str, required=True, help="Update or create an index")
-def create_data(config_file: str, es_host: Optional[str], type_of: str):
-    idx = SitemapIndexer(config_file, es_host, type_of)
+@click.option("--dry_run/--no-dry_run", default=False, help="Log actions without touching Elasticsearch")
+def create_data(config_file: str, es_host: Optional[str], type_of: str, dry_run: bool):
+    idx = SitemapIndexer(config_file, es_host, type_of, dry_run=dry_run)
     idx.build_and_index()
 
 if __name__ == "__main__":

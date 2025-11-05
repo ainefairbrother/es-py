@@ -41,7 +41,7 @@ json_file = "index/file_index/file.json"
 class FileIndexer:
     """Indexer for the `file` index."""
 
-    def __init__(self, config_file: str, es_host: Optional[str], type_of: str):
+    def __init__(self, config_file: str, es_host: Optional[str], type_of: str, dry_run: bool = False):
         """Initialise the indexer.
 
         Args:
@@ -52,6 +52,7 @@ class FileIndexer:
         self.config_file = config_file
         self.es_host = es_host
         self.type_of = type_of
+        self.dry_run = bool(dry_run)
         self._data = None
         self._fetcher = None
         self._indexer = None
@@ -109,7 +110,7 @@ class FileIndexer:
     def build_and_index_file_info(self):
         """Build and bulk-index all eligible files."""
         t0 = time.time()
-        click.echo(f"[info] Index: file — mode: {self.type_of}")
+        click.echo(f"[info] Index: file — mode: {self.type_of} — dry_run: {'yes' if self.dry_run else 'no'}")
 
         rows = self.fetcher.fetch_files()
         total_rows = len(rows)
@@ -132,24 +133,37 @@ class FileIndexer:
 
         try:
             if self.type_of == "create":
-                if self.create_file_index() is True:
-                    self.indexer.bulk_index(actions)
-                    click.echo(f"[ok] Bulk indexing successful ({len(actions)} docs) in {time.time()-t0:.1f}s")
-                else:
-                    self.indexer.bulk_index(actions)
-                    click.echo(f"[ok] Index existed; bulk indexing successful ({len(actions)} docs) in {time.time()-t0:.1f}s")
+                if self.dry_run:
+                    click.echo("[dry-run] Would drop & recreate index from on-disk settings/mappings")
+                    click.echo(f"[dry-run] Would upsert {len(actions)} document(s)")
+                    click.echo("[dry-run] Would set indexed_in_elasticsearch=1 for eligible DB rows")
+                    return
+                spec = self.load_json_file()
+                click.echo("[info] Dropping & recreating index…")
+                self.indexer.ensure_fresh_index(spec["settings"], spec["mappings"])
+                self.indexer.bulk_index(actions)
+                click.echo(f"[ok] Bulk indexing successful ({len(actions)} docs) in {time.time()-t0:.1f}s")
             else:
+                if self.dry_run:
+                    click.echo("[dry-run] Would verify index existence; if missing, exit with warning")
+                    click.echo(f"[dry-run] Would upsert {len(actions)} document(s)")
+                    click.echo("[dry-run] Would update indexed_in_elasticsearch flags in DB")
+                    return
+                if not self.indexer.index_exists():
+                    click.echo("[warn] Update requested but index 'file' does not exist. No changes made. Run once with --type_of=create.")
+                    return
+                click.echo("[info] Upserting into existing index…")
                 self.indexer.bulk_index(actions)
                 click.echo(f"[ok] Bulk indexing successful ({len(actions)} docs) in {time.time()-t0:.1f}s")
 
             # keep indexed_in_elasticsearch db column in sync with ES
-            t_sync = time.time()
-            updated = self.fetcher.update_elasticsearch_file()
-            if isinstance(updated, int):
-                click.echo(f"[ok] DB flag sync: indexed_in_elasticsearch updated for {updated} row(s) in {time.time()-t_sync:.1f}s")
-            else:
-                click.echo(f"[ok] DB flag (indexed_in_elasticsearch) sync completed, {len(actions)} rows set to 1")
-
+            if not self.dry_run:
+                t_sync = time.time()
+                updated = self.fetcher.update_elasticsearch_file()
+                if isinstance(updated, int):
+                    click.echo(f"[ok] DB flag sync: indexed_in_elasticsearch updated for {updated} row(s) in {time.time()-t_sync:.1f}s")
+                else:
+                    click.echo(f"[ok] DB flag (indexed_in_elasticsearch) sync completed, {len(actions)} rows set to 1")
         except BulkIndexError as e:
             click.echo("[error] Bulk indexing failed")
             errs = getattr(e, "errors", [])
@@ -178,9 +192,10 @@ class FileIndexer:
 @click.option(
     "--type_of", "-t", type=str, help="Update or create an index", required=True
 )
-def create_data(config_file: str, es_host: Optional[str], type_of: str):
+@click.option("--dry_run/--no-dry_run", default=False, help="Log actions without touching Elasticsearch")
+def create_data(config_file: str, es_host: Optional[str], type_of: str, dry_run: bool):
     """CLI entry point to build and index file documents."""
-    file_indexer = FileIndexer(config_file, es_host, type_of)
+    file_indexer = FileIndexer(config_file, es_host, type_of, dry_run=dry_run)
     file_indexer.build_and_index_file_info()
 
 

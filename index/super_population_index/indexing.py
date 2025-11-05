@@ -37,7 +37,7 @@ json_file = "index/super_population_index/superpopulations_mappings.json"
 class SuperPopulationIndexer:
     """Indexer for the `superpopulation` index."""
 
-    def __init__(self, config_file: str, es_host: Optional[str], type_of: str):
+    def __init__(self, config_file: str, es_host: Optional[str], type_of: str, dry_run: bool = False):
         """Initialise the indexer.
 
         Args:
@@ -46,6 +46,7 @@ class SuperPopulationIndexer:
             type_of (str): Operation type, e.g. "create" or "update".
         """
         self.type_of = type_of
+        self.dry_run = bool(dry_run)
         self.data = read_from_config_file(config_file)
         self.fetcher = FetchSPFromDB(self.data)
 
@@ -76,7 +77,7 @@ class SuperPopulationIndexer:
     def build_and_index_superpopulation(self):
         """Build and bulk index superpopulation documents."""
         t0 = time.time()
-        click.echo(f"[info] Index: superpopulation — mode: {self.type_of}")
+        click.echo(f"[info] Index: superpopulation — mode: {self.type_of} — dry_run: {'yes' if self.dry_run else 'no'}")
 
         rows = self.fetcher.fetch_information_from_db()
         total_rows = len(rows)
@@ -98,13 +99,24 @@ class SuperPopulationIndexer:
             return
 
         if self.type_of == "create":
-            if self.create_superpopulation_index() is True:
-                self.indexer.bulk_index(actions)
-                click.echo(f"[ok] Bulk indexing successful ({len(actions)} docs) in {time.time()-t0:.1f}s")
-            else:
-                self.indexer.bulk_index(actions)
-                click.echo(f"[ok] Index existed; bulk indexing successful ({len(actions)} docs) in {time.time()-t0:.1f}s")
+            if self.dry_run:
+                click.echo("[dry-run] Would drop & recreate index from on-disk settings/mappings")
+                click.echo(f"[dry-run] Would upsert {len(actions)} document(s)")
+                return
+            spec = self.load_json_file()
+            click.echo("[info] Dropping & recreating index…")
+            self.indexer.ensure_fresh_index(spec["settings"], spec["mappings"])
+            self.indexer.bulk_index(actions)
+            click.echo(f"[ok] Bulk indexing successful ({len(actions)} docs) in {time.time()-t0:.1f}s")
         else:
+            if self.dry_run:
+                click.echo("[dry-run] Would verify index existence; if missing, exit with warning")
+                click.echo(f"[dry-run] Would upsert {len(actions)} document(s)")
+                return
+            if not self.indexer.index_exists():
+                click.echo("[warn] Update requested but index 'superpopulation' does not exist. No changes made. Run once with --type_of=create.")
+                return
+            click.echo("[info] Upserting into existing index…")
             self.indexer.bulk_index(actions)
             click.echo(f"[ok] Bulk indexing successful ({len(actions)} docs) in {time.time()-t0:.1f}s")
 
@@ -126,9 +138,10 @@ class SuperPopulationIndexer:
 @click.option(
     "--type_of", "-t", type=str, help="Update or create an index", required=True
 )
-def create_data(config_file: str, es_host: Optional[str], type_of: str):
+@click.option("--dry_run/--no-dry_run", default=False, help="Log actions without touching Elasticsearch")
+def create_data(config_file: str, es_host: Optional[str], type_of: str, dry_run: bool):
     """CLI entry point to build and (re)index the superpopulation index."""
-    superpop_indexer = SuperPopulationIndexer(config_file, es_host, type_of)
+    superpop_indexer = SuperPopulationIndexer(config_file, es_host, type_of, dry_run=dry_run)
     superpop_indexer.build_and_index_superpopulation()
 
 
