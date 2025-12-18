@@ -1,115 +1,199 @@
+"""Sample indexer.
+
+Provides a CLI and programmatic API to build and (re)index the `sample`
+index in Elasticsearch from the IGSR database.
+
+This module:
+  * Reads ES settings/mappings from a local JSON file.
+  * Fetches sample data and transforms rows into ES documents.
+  * Creates or updates the ES index via bulk operations, with batched
+    preload queries to avoid N+1 database access patterns.
+
+The script uses Click for the CLI and is safe to import for use from
+other modules (see `create_data()`).
+"""
+
+# ──────────────────────────────────────────────────────────────
+# Imports
+# ──────────────────────────────────────────────────────────────
+
 import click
-import sys
 import json
-from typing import Any
+import time
+from typing import Any, Optional
 from index.elasticsearch_indexer import ElasticSearchIndexer
-from .fetch_samples_from_db import SampleDetailsFetcher
+from .fetch_information_from_db import SampleDetailsFetcher
 from index.config_read import read_from_config_file
 
-json_file = "index/sample_index/sample.json"
-class SampleIndexer:
-    """SampleIndexer Class """
 
-    def __init__(self, config_file: str, es_host: str, type_of: str):
-        """Initializing of the Sample Indexer class
+# ──────────────────────────────────────────────────────────────
+# Constants
+# ──────────────────────────────────────────────────────────────
+
+json_file = "index/sample_index/sample.json"
+
+
+# ──────────────────────────────────────────────────────────────
+# Indexer
+# ──────────────────────────────────────────────────────────────
+
+
+class SampleIndexer:
+    """Indexer for the `sample` index."""
+
+    def __init__(self, config_file: str, es_host: Optional[str], type_of: str, dry_run: bool = False):
+        """Initialise the Sample indexer.
 
         Args:
-            config_file (str): Configuration file
-            es_host (str): Elasticsearch host
-            type_of (str): Type of whether create or update
+            config_file (str): Path to configuration file with DB credentials.
+            es_host (str | None): Elasticsearch host (overrides config if provided).
+            type_of (str): Operation type (e.g., "create" or "update").
         """
         self.config_file = config_file
         self.es_host = es_host
         self.type_of = type_of
+        self.dry_run = bool(dry_run)
         self._data = None
         self._fetcher = None
         self._indexer = None
 
     @property
     def data(self):
-        """Property function for data
-
-        Returns:
-            _type_: self.data
-        """
+        """Lazy-read configuration data."""
         if self._data is None:
             self._data = read_from_config_file(self.config_file)
-
         return self._data
 
     @property
     def fetcher(self):
-        """Property function of fetcher
-
-        Returns:
-            _type_: self.fetcher
-        """
+        """Lazy-initialise and return the DB fetcher."""
         if self._fetcher is None:
             self._fetcher = SampleDetailsFetcher(self.data)
         return self._fetcher
 
     @property
     def indexer(self):
-        """Property function of indexer
-
-        Returns:
-            _type_: self.indexer
-        """
+        """Lazy-initialise and return the Elasticsearch indexer."""
         if self._indexer is None:
-            self._indexer = ElasticSearchIndexer(self.es_host, "sample")
+            es_cfg = (self.data.get("elasticsearch") or {})
+            self._indexer = ElasticSearchIndexer(
+                self.es_host or es_cfg.get("host"),
+                "sample",
+                es_api_key=es_cfg.get("api_key"),
+                es_username=es_cfg.get("username"),
+                es_password=es_cfg.get("password"),
+                es_cloud_id=es_cfg.get("cloud_id"),
+            )
         return self._indexer
-    
-    def load_json_file(self) -> dict[str, Any]:
-        """Loading Json file to get the settings and the mappings
 
-        Returns:
-            dict[str, Any]: json data
-        """
+    def load_json_file(self) -> dict[str, Any]:
+        """Load index settings and mappings JSON."""
         with open(json_file, "r") as file:
             data = json.load(file)
-
         return data
 
     def create_sample_index(self) -> bool:
-        """Create Sample index
-
-        Returns:
-            bool: True or False if index is created
-        """
+        """Create the `sample` index in Elasticsearch."""
         json_data = self.load_json_file()
-        sample = self.indexer.create_index(
-            json_data["settings"], json_data["mappings"]
-        )
-
+        sample = self.indexer.create_index(json_data["settings"], json_data["mappings"])
         return sample
 
     def generate_actions(self):
-        """Generate actions that will be used for bulk index
-
-        Yields:
-            _type_: A generator
-        """
+        """Generate bulk indexing actions with batched preloads."""
         samples_info = self.fetcher.fetch_samples()
+        sample_ids = [int(r[0]) for r in samples_info]  # sample_id
+
+        # preload all dependent data once to avoid N+1 queries
+        sources_map = self.fetcher.preload_sources(sample_ids)
+        pops_map = self.fetcher.preload_populations(sample_ids)
+        dcs_map = self.fetcher.preload_datacollections(sample_ids)
+        rels_map = self.fetcher.preload_relationships(sample_ids)
+        syns_map = self.fetcher.preload_synonyms(sample_ids)
 
         for row in samples_info:
             code = row[1]
-            samples_data = self.fetcher.build_the_dictionary_structure(row)
+            samples_data = self.fetcher.build_the_dictionary_structure(
+                row,
+                sources_map=sources_map,
+                populations_map=pops_map,
+                dcs_map=dcs_map,
+                rels_map=rels_map,
+                syns_map=syns_map,
+            )
+
+            flat = []
+            for dc in samples_data.get("dataCollections", []):
+                for key in ("variants", "sequence", "alignment"):
+                    vals = dc.get(key)
+                    if vals:
+                        flat.extend(vals)
+            samples_data["dataCollectionsAnalysisGroups"] = flat
+
             yield self.indexer.index_data(samples_data, code, self.type_of)
 
     def build_and_index_sample_info(self):
-        """Build and index sample information
+        """Bulk index sample documents."""
+        t0 = time.time()
+        click.echo(f"[info] Index: sample — mode: {self.type_of} — dry_run: {'yes' if self.dry_run else 'no'}")
 
-        Returns:
-            _type_: Bulk actions
-        """
-        actions = self.generate_actions()
-        if self.type_of == "create":
-            if self.create_sample_index() is True:
+        # We fetch once to report an accurate candidate count (minimal diff: we let
+        # generate_actions() fetch again as before to keep structure unchanged).
+        try:
+            preview_rows = self.fetcher.fetch_samples()
+            total_rows = len(preview_rows)
+            click.echo(f"[info] Found {total_rows} candidate document(s) from DB")
+        except Exception:
+            total_rows = None
+            click.echo("[warn] Could not pre-count candidates; continuing…")
+
+        click.echo("[info] Preparing bulk actions…")
+        actions = []
+        for i, action in enumerate(self.generate_actions(), 1):
+            actions.append(action)
+            if i % 500 == 0:
+                click.echo(f"[info] Prepared {i}{f'/{total_rows}' if total_rows is not None else ''} actions…")
+
+        click.echo(f"[info] Prepared {len(actions)} action(s)")
+        if not actions:
+            click.echo("[info] Nothing to do — exiting")
+            try:
+                self.fetcher.close()
+            except Exception:
+                pass
+            return
+
+        try:
+            if self.type_of == "create":
+                if self.dry_run:
+                    click.echo("[dry-run] Would drop & recreate index from on-disk settings/mappings")
+                    click.echo(f"[dry-run] Would upsert {len(actions)} document(s)")
+                    return
+                spec = self.load_json_file()
+                click.echo("[info] Dropping & recreating index…")
+                self.indexer.ensure_fresh_index(spec["settings"], spec["mappings"])
                 self.indexer.bulk_index(actions)
-                click.echo("Bulk indexing successful")
-        else:
-            self.indexer.bulk_index(actions)
-            click.echo("Bulk indexing successful")
+                click.echo(f"[ok] Bulk indexing successful ({len(actions)} docs) in {time.time()-t0:.1f}s")
+            else:
+                if self.dry_run:
+                    click.echo("[dry-run] Would verify index existence; if missing, exit with warning")
+                    click.echo(f"[dry-run] Would upsert {len(actions)} document(s)")
+                    return
+                if not self.indexer.index_exists():
+                    click.echo("[warn] Update requested but index 'sample' does not exist. No changes made. Run once with --type_of=create.")
+                    return
+                click.echo("[info] Upserting into existing index…")
+                self.indexer.bulk_index(actions)
+                click.echo(f"[ok] Bulk indexing successful ({len(actions)} docs) in {time.time()-t0:.1f}s")
+        finally:
+            try:
+                self.fetcher.close()
+            except Exception:
+                pass
+
+
+# ──────────────────────────────────────────────────────────────
+# CLI
+# ──────────────────────────────────────────────────────────────
 
 
 @click.command()
@@ -120,14 +204,20 @@ class SampleIndexer:
     help="Configuration file",
     required=True,
 )
-@click.option("--es_host", "-es", type=str, help="ElasticSearch host", required=True)
+@click.option("--es_host", "-es", type=str, help="Elasticsearch host (overrides config)", required=False)
 @click.option(
     "--type_of", "-t", type=str, help="Update or create an index", required=True
 )
-def create_data(config_file: str, es_host: str, type_of: str):
-    sample_indexer = SampleIndexer(config_file, es_host, type_of)
+@click.option("--dry_run/--no-dry_run", default=False, help="Log actions without touching Elasticsearch")
+def create_data(config_file: str, es_host: Optional[str], type_of: str, dry_run: bool):
+    """CLI entry point to build and (re)index the `sample` index."""
+    sample_indexer = SampleIndexer(config_file, es_host, type_of, dry_run=dry_run)
     sample_indexer.build_and_index_sample_info()
 
+
+# ──────────────────────────────────────────────────────────────
+# Script entry
+# ──────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     create_data()

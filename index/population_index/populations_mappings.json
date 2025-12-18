@@ -1,142 +1,127 @@
 {
-    "settings": {
-      "number_of_shards": 2,
-      "number_of_replicas": 1,
-      "refresh_interval": "30s",
-      "analysis": {
-        "analyzer": {
-          "default": {
-            "type": "custom",
-            "tokenizer": "standard",
-            "filter": ["lowercase", "asciifolding"]
-          }
-        }
-      },
-      "routing": {
-        "allocation": {
-          "include": {
-            "_tier_preference": "data_content"
-          }
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 0,
+    "refresh_interval": "30s",
+    "analysis": {
+      "analyzer": {
+        "default": {
+          "type": "custom",
+          "tokenizer": "standard",
+          "filter": ["lowercase", "asciifolding"]
         }
       }
     },
-    "mappings": {
-      "properties": {
-        "code": {
-          "type": "text",
-          "fields": {
-            "keyword": { "type": "keyword", "ignore_above": 256 }
-          }
-        },
-        "description": {
-          "type": "text",
-          "fields": {
-            "keyword": { "type": "keyword", "ignore_above": 256 }
-          }
-        },
-        "display_order": { "type": "long" },
-        "elasticId": {
-          "type": "text",
-          "fields": {
-            "keyword": { "type": "keyword", "ignore_above": 256 }
-          }
-        },
-        "latitude": { "type": "float" },
-        "longitude": { "type": "float" },
-        "name": {
-          "type": "text",
-          "fields": {
-            "keyword": { "type": "keyword", "ignore_above": 256 }
-          }
-        },
-        "samples": {
-          "properties": {
-            "count": { "type": "long" }
-          }
-        },
-        "superpopulation": {
-          "properties": {
-            "display_color": {
-              "type": "text",
-              "fields": {
-                "keyword": { "type": "keyword", "ignore_above": 256 }
-              }
-            },
-            "display_order": { "type": "long" },
-            "name": {
-              "type": "text",
-              "fields": {
-                "keyword": { "type": "keyword", "ignore_above": 256 }
-              }
-            }
-          }
-        },
-        "overlappingPopulations": {
-          "properties": {
-            "populationDescription": {
-              "type": "text",
-              "fields": {
-                "keyword": { "type": "keyword", "ignore_above": 256 }
-              }
-            },
-            "populationElasticId": {
-              "type": "text",
-              "fields": {
-                "keyword": { "type": "keyword", "ignore_above": 256 }
-              }
-            },
-            "sharedSampleCount": { "type": "long" },
-            "sharedSamples": {
-              "type": "text",
-              "fields": {
-                "keyword": { "type": "keyword", "ignore_above": 256 }
-              }
-            }
-          }
-        },
-        "dataCollections": {
-          "properties": {
-            "alignment": {
-              "type": "text",
-              "fields": {
-                "keyword": { "type": "keyword", "ignore_above": 256 }
-              }
-            },
-            "dataReusePolicy": {
-              "type": "text",
-              "fields": {
-                "keyword": { "type": "keyword", "ignore_above": 256 }
-              }
-            },
-            "dataTypes": {
-              "type": "text",
-              "fields": {
-                "keyword": { "type": "keyword", "ignore_above": 256 }
-              }
-            },
-            "sequence": {
-              "type": "text",
-              "fields": {
-                "keyword": { "type": "keyword", "ignore_above": 256 }
-              }
-            },
-            "title": {
-              "type": "text",
-              "fields": {
-                "keyword": { "type": "keyword", "ignore_above": 256 }
-              }
-            },
-            "variants": {
-              "type": "text",
-              "fields": {
-                "keyword": { "type": "keyword", "ignore_above": 256 }
-              }
-            }
-          }
+    "routing": {
+      "allocation": {
+        "include": {
+          "_tier_preference": "data_content"
         }
       }
     }
+  },
+  "mappings": {
+    "_source": {
+      "excludes": ["dataCollectionsAnalysisGroups"]
+    },
+    "properties": {
+      "code": {
+        "type": "text",
+        "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } }
+      },
+      "description": {
+        "type": "text",
+        "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } }
+      },
+      "display_order": { "type": "long" },
+      "elasticId": {
+        "type": "text",
+        "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } }
+      },
+      "latitude": { "type": "float" },
+      "longitude": { "type": "float" },
+      "name": {
+        "type": "text",
+        "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } }
+      },
+      "samples": {
+        "properties": {
+          "count": { "type": "long" }
+        }
+      },
+      "superpopulation": {
+        "properties": {
+          "display_colour": {
+            "type": "text",
+            "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } }
+          },
+          "display_order": { "type": "long" },
+          "name": {
+            "type": "text",
+            "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } }
+          }
+        }
+      },
+      "overlappingPopulations": {
+        "properties": {
+          "populationDescription": {
+            "type": "text",
+            "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } }
+          },
+          "populationElasticId": {
+            "type": "text",
+            "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } }
+          },
+          "sharedSampleCount": { "type": "long" },
+          "sharedSamples": {
+            "type": "text",
+            "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } }
+          }
+        }
+      },
+
+      "dataCollections": {
+        "properties": {
+          "alignment": {
+            "type": "text",
+            "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } },
+            "copy_to": ["dataCollections._analysisGroups"]
+          },
+          "dataReusePolicy": {
+            "type": "text",
+            "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } }
+          },
+          "dataTypes": {
+            "type": "text",
+            "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } }
+          },
+          "sequence": {
+            "type": "text",
+            "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } },
+            "copy_to": ["dataCollections._analysisGroups"]
+          },
+          "title": {
+            "type": "text",
+            "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } }
+          },
+          "variants": {
+            "type": "text",
+            "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } },
+            "copy_to": ["dataCollections._analysisGroups"]
+          },
+
+          "_analysisGroups": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+
+      "dataCollectionsAnalysisGroups": {
+        "type": "keyword",
+        "store": true,
+        "doc_values": false
+      }
+    }
   }
-  
-    
-  
+}

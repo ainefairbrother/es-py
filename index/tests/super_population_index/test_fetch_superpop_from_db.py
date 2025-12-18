@@ -6,6 +6,7 @@ from typing import Any
 
 # ───────────────────────── Fixtures ──────────────────────────
 
+
 @pytest.fixture
 def db_config() -> dict[str, Any]:
     """DB configuration
@@ -23,7 +24,7 @@ def db_config() -> dict[str, Any]:
 
 
 @pytest.fixture
-def fetcher(db_config: dict[str, Any])-> FetchSPFromDB:
+def fetcher(db_config: dict[str, Any]) -> FetchSPFromDB:
     """The fetcher fixture
 
     Args:
@@ -31,28 +32,28 @@ def fetcher(db_config: dict[str, Any])-> FetchSPFromDB:
 
     Returns:
         FetchSPFromDB:  A class
-    """    
+    """
     return FetchSPFromDB(db_config)
+
 
 # ────────────────────────── Tests ────────────────────────────
 
-def test_fetch_information_from_db(mocker: MockerFixture, fetcher:FetchSPFromDB):
+
+def test_fetch_information_from_db(mocker: MockerFixture, fetcher: FetchSPFromDB):
     """Test for FetchSPFromDB - fetch_information_from_DB
 
     Args:
         mocker (MockerFixture): Mocker from the Pytest_mock:MockerFixture
         fetcher (FetchSPFromDB): FetchSPFromDB class
-    """    
+    """
     mock_cursor = MagicMock()
-    mock_cursor.fetchall.return_value = [
-        ("TEST", "Test ancestry", None, None)
-    ]
+    mock_cursor.fetchall.return_value = [("TEST", "Test ancestry", None, None)]
 
     mock_db = mock_cursor
     mock_db.cursor.return_value = mock_cursor
     mocker.patch(
         "index.super_population_index.fetch_information_from_db.connect",
-        return_value=mock_db
+        return_value=mock_db,
     )
     result = fetcher.fetch_information_from_db()
     assert result[0][0] == "TEST"
@@ -65,10 +66,10 @@ def test_build_superpopulation_info(mocker: MockerFixture, fetcher: FetchSPFromD
     Args:
         mocker (MockerFixture): Mocker from the Pytest_mock:MockerFixture
         fetcher (FetchSPFromDB): FetchSPFromDB class
-    """    
+    """
     row = ("TEST", "Test ancestry", None, None)
 
     result = fetcher.build_superpopulation_info(row)
 
-    assert result["elasticId"] == "TEST"
+    assert result["elastic_id"] == "TEST"
     assert result["name"] == "Test ancestry"

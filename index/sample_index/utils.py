@@ -14,6 +14,8 @@ def create_the_dictionary_structure() -> dict[str, Any]:
         "name": None,
         "dataCollections": [],
         "sex": None,
+        "relatedSample": [],
+        "synonyms": [],
     }
 
     return samples_info

@@ -1,47 +1,46 @@
 {
-    "settings": {
-      "number_of_shards": 1,
-      "number_of_replicas": 1,
-      "routing": {
-        "allocation": {
-          "include": {
-            "_tier_preference": "data_content"
-          }
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 0,
+    "routing": {
+      "allocation": {
+        "include": {
+          "_tier_preference": "data_content"
         }
       }
-    },
-    "mappings": {
-      "properties": {
-        "doc": {
-          "properties": {
-            "display_colour": {
-              "type": "text",
-              "fields": {
-                "keyword": {
-                  "type": "keyword",
-                  "ignore_above": 256
-                }
+    }
+  },
+  "mappings": {
+    "properties": {
+      "doc": {
+        "properties": {
+          "display_colour": {
+            "type": "text",
+            "fields": {
+              "keyword": {
+                "type": "keyword",
+                "ignore_above": 256
               }
-            },
-            "display_order": {
-              "type": "long"
-            },
-            "elasticId": {
-              "type": "text",
-              "fields": {
-                "keyword": {
-                  "type": "keyword",
-                  "ignore_above": 256
-                }
+            }
+          },
+          "display_order": {
+            "type": "long"
+          },
+          "elastic_id": {
+            "type": "text",
+            "fields": {
+              "keyword": {
+                "type": "keyword",
+                "ignore_above": 256
               }
-            },
-            "name": {
-              "type": "text",
-              "fields": {
-                "keyword": {
-                  "type": "keyword",
-                  "ignore_above": 256
-                }
+            }
+          },
+          "name": {
+            "type": "text",
+            "fields": {
+              "keyword": {
+                "type": "keyword",
+                "ignore_above": 256
               }
             }
           }
@@ -49,4 +48,4 @@
       }
     }
   }
-  
+}
