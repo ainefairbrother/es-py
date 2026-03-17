@@ -9,3 +9,4 @@
 es_py.egg-info/
 __pycache__/
 *.pyc
+scripts/*_config.ini
