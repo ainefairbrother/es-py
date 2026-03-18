@@ -9,16 +9,22 @@ set -euo pipefail
 # Examples:
 #   deploy_igsr_es_indices.sh --path ./es-py --env dev --config ./scripts/dev_config.ini --dry-run
 #   deploy_igsr_es_indices.sh --path ./es-py --env dev --config ./scripts/dev_config.ini --use-prod-db
+#   deploy_igsr_es_indices.sh --path ./es-py --env dev --config ./scripts/dev_config.ini --single-index sample
 #   deploy_igsr_es_indices.sh --path /full/path/to/es-py --env prod --config /full/path/to/config.ini
 
 PROJECT_ROOT=""
 
 CONFIG_PATH=""
+RUNTIME_CONFIG_PATH=""
+TEMP_CONFIG_PATH=""
 TARGET_ENV=""
 BRANCH_NAME="unknown"
 PYTHON_BIN="python3"
 DRY_RUN=0
 USE_PROD_DB=0
+SINGLE_INDEX=""
+TARGET_INDEX_LABEL="all"
+TARGET_INDEX_MODULES=()
 
 EXPECTED_CLOUD_MARKER=""
 EXPECTED_DB_NAME=""
@@ -27,9 +33,13 @@ FORBIDDEN_SITE_MARKER=""
 
 ES_CLOUD_ID=""
 ES_API_KEY=""
+ES_HOST=""
+ES_USERNAME=""
+ES_PASSWORD=""
 DB_HOST=""
 DB_PORT=""
 DB_USER=""
+DB_PASSWORD=""
 DB_NAME=""
 SITE_ROOT=""
 SITE_BASE=""
@@ -59,11 +69,13 @@ Required:
 Optional:
   --dry-run            Print the validation summary and commands without executing
   --use-prod-db        Allow --env dev to use the production database name
+  --single-index NAME  Create and deploy only the named index
   -h, --help           Show help
 
 Examples:
   $(basename "$0") --path ./es-py --env dev --config ./scripts/dev_config.ini --dry-run
   $(basename "$0") --path ./es-py --env dev --config ./scripts/dev_config.ini --use-prod-db
+  $(basename "$0") --path ./es-py --env dev --config ./scripts/dev_config.ini --single-index sample
   $(basename "$0") --path /full/path/to/es-py --env prod --config /full/path/to/config.ini
 EOF
 }
@@ -97,6 +109,12 @@ run_in_dir() {
 
 need_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "Required command not found: $1"
+}
+
+cleanup() {
+  if [ -n "${TEMP_CONFIG_PATH:-}" ] && [ -f "$TEMP_CONFIG_PATH" ]; then
+    rm -f "$TEMP_CONFIG_PATH"
+  fi
 }
 
 trim() {
@@ -196,6 +214,11 @@ parse_args() {
         USE_PROD_DB=1
         shift
         ;;
+      --single-index)
+        [ "$#" -ge 2 ] || die "Missing value for $1"
+        SINGLE_INDEX="$2"
+        shift 2
+        ;;
       -h|--help)
         usage
         exit 0
@@ -230,6 +253,53 @@ validate_inputs() {
   fi
 }
 
+resolve_target_indexes() {
+  local normalized_index=""
+
+  if [ -z "$SINGLE_INDEX" ]; then
+    TARGET_INDEX_LABEL="all"
+    TARGET_INDEX_MODULES=("${INDEX_MODULES[@]}")
+    return 0
+  fi
+
+  normalized_index="$(to_lower "$SINGLE_INDEX")"
+  normalized_index="${normalized_index//-/_}"
+
+  case "$normalized_index" in
+    population)
+      TARGET_INDEX_LABEL="population"
+      TARGET_INDEX_MODULES=("index.population_index.indexing")
+      ;;
+    analysis_group)
+      TARGET_INDEX_LABEL="analysis_group"
+      TARGET_INDEX_MODULES=("index.analysis_group_index.indexing")
+      ;;
+    data_collection|data_collections)
+      TARGET_INDEX_LABEL="data_collections"
+      TARGET_INDEX_MODULES=("index.data_collection_index.indexing")
+      ;;
+    file)
+      TARGET_INDEX_LABEL="file"
+      TARGET_INDEX_MODULES=("index.file_index.indexing")
+      ;;
+    sample)
+      TARGET_INDEX_LABEL="sample"
+      TARGET_INDEX_MODULES=("index.sample_index.indexing")
+      ;;
+    super_population|superpopulation)
+      TARGET_INDEX_LABEL="superpopulation"
+      TARGET_INDEX_MODULES=("index.super_population_index.indexing")
+      ;;
+    sitemap)
+      TARGET_INDEX_LABEL="sitemap"
+      TARGET_INDEX_MODULES=("index.sitemap_index.indexing")
+      ;;
+    *)
+      die "Unsupported --single-index '$SINGLE_INDEX'. Valid values: population, analysis_group, data_collections, file, sample, superpopulation, sitemap"
+      ;;
+  esac
+}
+
 set_env_values() {
   case "$TARGET_ENV" in
     dev)
@@ -251,15 +321,25 @@ set_env_values() {
 }
 
 load_config() {
+  ES_HOST="$(read_ini_value "elasticsearch" "host")"
+  [ -n "$ES_HOST" ] || ES_HOST="$(read_ini_value "elasticsearch" "ES_HOST")"
+
   ES_CLOUD_ID="$(read_ini_value "elasticsearch" "cloud_id")"
   [ -n "$ES_CLOUD_ID" ] || ES_CLOUD_ID="$(read_ini_value "elasticsearch" "ES_CLOUD_ID")"
 
   ES_API_KEY="$(read_ini_value "elasticsearch" "api_key")"
   [ -n "$ES_API_KEY" ] || ES_API_KEY="$(read_ini_value "elasticsearch" "ES_API_KEY")"
 
+  ES_USERNAME="$(read_ini_value "elasticsearch" "username")"
+  [ -n "$ES_USERNAME" ] || ES_USERNAME="$(read_ini_value "elasticsearch" "ES_USERNAME")"
+
+  ES_PASSWORD="$(read_ini_value "elasticsearch" "password")"
+  [ -n "$ES_PASSWORD" ] || ES_PASSWORD="$(read_ini_value "elasticsearch" "ES_PASSWORD")"
+
   DB_HOST="$(read_ini_value "database" "host")"
   DB_PORT="$(read_ini_value "database" "port")"
   DB_USER="$(read_ini_value "database" "user")"
+  DB_PASSWORD="$(read_ini_value "database" "password")"
   DB_NAME="$(read_ini_value "database" "name")"
   SITE_ROOT="$(read_ini_value "site" "site_root")"
   SITE_BASE="$(read_ini_value "site" "site_base")"
@@ -269,6 +349,7 @@ load_config() {
   [ -n "$DB_HOST" ] || die "Missing [database] host in: $CONFIG_PATH"
   [ -n "$DB_PORT" ] || die "Missing [database] port in: $CONFIG_PATH"
   [ -n "$DB_USER" ] || die "Missing [database] user in: $CONFIG_PATH"
+  [ -n "$DB_PASSWORD" ] || die "Missing [database] password in: $CONFIG_PATH"
   [ -n "$DB_NAME" ] || die "Missing [database] name in: $CONFIG_PATH"
   [ -n "$SITE_ROOT" ] || die "Missing [site] site_root in: $CONFIG_PATH"
   [ -n "$SITE_BASE" ] || die "Missing [site] site_base in: $CONFIG_PATH"
@@ -333,6 +414,43 @@ warn_database_selection() {
   fi
 }
 
+prepare_runtime_config() {
+  TEMP_CONFIG_PATH="$(mktemp "${TMPDIR%/}/igsr-es-config.XXXXXX")"
+  RUNTIME_CONFIG_PATH="$TEMP_CONFIG_PATH"
+
+  cat >"$RUNTIME_CONFIG_PATH" <<EOF
+[elasticsearch]
+cloud_id=$ES_CLOUD_ID
+api_key=$ES_API_KEY
+EOF
+
+  if [ -n "$ES_HOST" ]; then
+    printf "host=%s\n" "$ES_HOST" >>"$RUNTIME_CONFIG_PATH"
+  fi
+
+  if [ -n "$ES_USERNAME" ]; then
+    printf "username=%s\n" "$ES_USERNAME" >>"$RUNTIME_CONFIG_PATH"
+  fi
+
+  if [ -n "$ES_PASSWORD" ]; then
+    printf "password=%s\n" "$ES_PASSWORD" >>"$RUNTIME_CONFIG_PATH"
+  fi
+
+  cat >>"$RUNTIME_CONFIG_PATH" <<EOF
+
+[database]
+host=$DB_HOST
+port=$DB_PORT
+user=$DB_USER
+password=$DB_PASSWORD
+name=$DB_NAME
+
+[site]
+site_root=$SITE_ROOT
+site_base=$SITE_BASE
+EOF
+}
+
 detect_branch() {
   if ! command -v git >/dev/null 2>&1; then
     BRANCH_NAME="git-not-installed"
@@ -356,10 +474,12 @@ print_plan() {
   log "Index creation plan"
   printf "PROJECT_ROOT=%s\n" "$PROJECT_ROOT"
   printf "CONFIG_PATH=%s\n" "$CONFIG_PATH"
+  printf "RUNTIME_CONFIG_PATH=%s\n" "$RUNTIME_CONFIG_PATH"
   printf "TARGET_ENV=%s\n" "$TARGET_ENV"
   printf "BRANCH_NAME=%s\n" "$BRANCH_NAME"
   printf "PYTHON_BIN=%s\n" "$PYTHON_BIN"
   printf "USE_PROD_DB=%s\n" "$USE_PROD_DB"
+  printf "TARGET_INDEX=%s\n" "$TARGET_INDEX_LABEL"
   printf "ES_CLOUD_ID=%s\n" "$ES_CLOUD_ID"
   printf "DB_HOST=%s\n" "$DB_HOST"
   printf "DB_PORT=%s\n" "$DB_PORT"
@@ -370,7 +490,7 @@ print_plan() {
   printf "INDEX_MODE=create\n"
   printf "INDEX_ORDER=\n"
 
-  for index_module in "${INDEX_MODULES[@]}"; do
+  for index_module in "${TARGET_INDEX_MODULES[@]}"; do
     printf "  - %s\n" "$index_module"
   done
 }
@@ -378,23 +498,27 @@ print_plan() {
 run_indexers() {
   local index_module=""
 
-  for index_module in "${INDEX_MODULES[@]}"; do
+  for index_module in "${TARGET_INDEX_MODULES[@]}"; do
     log "Running $index_module"
     run_in_dir "$PROJECT_ROOT" \
       "$PYTHON_BIN" -m "$index_module" \
-      --config_file "$CONFIG_PATH" \
+      --config_file "$RUNTIME_CONFIG_PATH" \
       --type_of create
   done
 }
 
 main() {
+  trap cleanup EXIT
   parse_args "$@"
   validate_inputs
+  RUNTIME_CONFIG_PATH="$CONFIG_PATH"
   set_env_values
+  resolve_target_indexes
   load_config
   warn_database_selection
   validate_config_for_env
   detect_branch
+  prepare_runtime_config
 
   if [ "$DRY_RUN" -eq 0 ]; then
     need_cmd "$PYTHON_BIN"
